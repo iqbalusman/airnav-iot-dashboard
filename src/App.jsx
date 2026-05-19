@@ -1,14 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+
+const LineChartPanel = lazy(() => import('./components/LineChartPanel.jsx'));
 
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'admin123';
@@ -977,7 +969,9 @@ function runSelfTests() {
   console.assert(normalizeUsers({ broken: true }).some((user) => user.username === ADMIN_USERNAME), 'Storage rusak harus tetap punya admin default');
 }
 
-runSelfTests();
+if (import.meta.env.DEV) {
+  runSelfTests();
+}
 
 function statusTone(status) {
   const value = String(status || '').toLowerCase();
@@ -1086,6 +1080,14 @@ function ChartCard({ title, description, children }) {
       </div>
       <div className="h-72 w-full">{children}</div>
     </Card>
+  );
+}
+
+function LazyLineChart(props) {
+  return (
+    <Suspense fallback={<div className="grid h-full w-full place-items-center rounded-2xl bg-slate-100 text-sm font-black text-slate-500">Memuat grafik...</div>}>
+      <LineChartPanel {...props} />
+    </Suspense>
   );
 }
 
@@ -1489,13 +1491,20 @@ function DashboardPage({ temperature, rfid, ats, onNavigate }) {
 
       <div className="mt-6 grid gap-6 2xl:grid-cols-[1.35fr_0.65fr]">
         <ChartCard title="Tren Lingkungan Lab" description="Suhu dan kelembaban terbaru dari sensor DHT11.">
-          <ResponsiveContainer width="100%" height="100%"><LineChart data={temperature} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="jam" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="suhu" name="Suhu °C" stroke="#0891b2" strokeWidth={3} dot={{ r: 4 }} /><Line type="monotone" dataKey="kelembaban" name="Kelembaban %" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} /></LineChart></ResponsiveContainer>
+          <LazyLineChart
+            data={temperature.slice(-80)}
+            margin={{ top: 10, right: 20, left: -10, bottom: 0 }}
+            lines={[
+              { dataKey: 'suhu', name: 'Suhu °C', stroke: '#0891b2', dot: { r: 4 } },
+              { dataKey: 'kelembaban', name: 'Kelembaban %', stroke: '#2563eb', dot: { r: 4 } },
+            ]}
+          />
         </ChartCard>
         <Card className="min-h-[360px]"><div className="mb-5 flex items-center justify-between gap-4"><div><h3 className="text-lg font-black text-slate-950">Aktivitas RFID Terbaru</h3><p className="text-sm text-slate-500">Riwayat scan terakhir dari sistem alat.</p></div><Badge tone={warningCount > 0 ? 'red' : 'green'}>{warningCount > 0 ? 'Ada Peringatan' : 'Aman'}</Badge></div><div className="space-y-3">{[...rfid].reverse().slice(0, 5).map((item, index) => <div key={`${item.uid}-${item.jam}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-950">{item.namaAlat}</p><p className="truncate text-xs text-slate-500">{item.uid} • {item.jam} WITA</p></div><Badge tone={statusTone(item.status)}>{item.status}</Badge></div>)}</div></Card>
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2"><div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-lg font-black text-slate-950">Status ATS PLN / Generator</h3><p className="text-sm text-slate-500">Pantauan tegangan, arus, dan watt utama serta backup generator.</p></div><Badge tone={statusTone(latestAts.keterangan)}>{latestAts.keterangan || 'Tidak Ada Data'}</Badge></div><div className="grid gap-4 xl:grid-cols-3"><div className="h-64 min-w-0"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Tegangan</p><ResponsiveContainer width="100%" height="100%"><LineChart data={ats} margin={{ top: 10, right: 14, left: -18, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="jam" /><YAxis domain={[0, 250]} /><Tooltip /><Legend /><Line type="monotone" dataKey="teganganPln" name="PLN V" stroke="#06b6d4" strokeWidth={3} dot={false} /><Line type="monotone" dataKey="teganganGenerator" name="GEN V" stroke="#f59e0b" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer></div><div className="h-64 min-w-0"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Arus</p><ResponsiveContainer width="100%" height="100%"><LineChart data={ats} margin={{ top: 10, right: 14, left: -18, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="jam" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="arusPln" name="PLN A" stroke="#2563eb" strokeWidth={3} dot={false} /><Line type="monotone" dataKey="arusGenerator" name="GEN A" stroke="#fb7185" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer></div><div className="h-64 min-w-0"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Watt</p><ResponsiveContainer width="100%" height="100%"><LineChart data={ats} margin={{ top: 10, right: 14, left: -18, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="jam" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="wattPln" name="PLN W" stroke="#10b981" strokeWidth={3} dot={false} /><Line type="monotone" dataKey="wattGenerator" name="GEN W" stroke="#a855f7" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer></div></div></Card>
+        <Card className="xl:col-span-2"><div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="text-lg font-black text-slate-950">Status ATS PLN / Generator</h3><p className="text-sm text-slate-500">Pantauan tegangan, arus, dan watt utama serta backup generator.</p></div><Badge tone={statusTone(latestAts.keterangan)}>{latestAts.keterangan || 'Tidak Ada Data'}</Badge></div><div className="grid gap-4 xl:grid-cols-3"><div className="h-64 min-w-0"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Tegangan</p><LazyLineChart data={ats.slice(-80)} margin={{ top: 10, right: 14, left: -18, bottom: 0 }} yDomain={[0, 250]} lines={[{ dataKey: 'teganganPln', name: 'PLN V', stroke: '#06b6d4', dot: false }, { dataKey: 'teganganGenerator', name: 'GEN V', stroke: '#f59e0b', dot: false }]} /></div><div className="h-64 min-w-0"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Arus</p><LazyLineChart data={ats.slice(-80)} margin={{ top: 10, right: 14, left: -18, bottom: 0 }} lines={[{ dataKey: 'arusPln', name: 'PLN A', stroke: '#2563eb', dot: false }, { dataKey: 'arusGenerator', name: 'GEN A', stroke: '#fb7185', dot: false }]} /></div><div className="h-64 min-w-0"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Watt</p><LazyLineChart data={ats.slice(-80)} margin={{ top: 10, right: 14, left: -18, bottom: 0 }} lines={[{ dataKey: 'wattPln', name: 'PLN W', stroke: '#10b981', dot: false }, { dataKey: 'wattGenerator', name: 'GEN W', stroke: '#a855f7', dot: false }]} /></div></div></Card>
         <Card><h3 className="text-lg font-black text-slate-950">Ringkasan Alat</h3><p className="mt-1 text-sm text-slate-500">Perbandingan transaksi RFID hari ini.</p><div className="mt-6 space-y-5">{[['Dipinjam', borrowedCount, 'bg-orange-500'], ['Dikembalikan', returnedCount, 'bg-emerald-500'], ['Peringatan UID', warningCount, 'bg-rose-500']].map(([label, count, color]) => <div key={label}><div className="mb-2 flex items-center justify-between text-sm font-bold text-slate-700"><span>{label}</span><span>{count}</span></div><div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className={classNames('h-full rounded-full', color)} style={{ width: `${Math.min(100, Number(count) * 18)}%` }} /></div></div>)}</div><button onClick={() => onNavigate('rfid')} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-cyan-700">Lihat Detail RFID</button></Card>
       </div>
     </div>
@@ -1527,7 +1536,7 @@ function TemperaturePage({ data }) {
     { key: 'kelembaban', label: 'Kelembaban', render: (row) => <span>{row.kelembaban}%</span> },
     { key: 'keterangan', label: 'Keterangan', render: (row) => <Badge tone={statusTone(row.keterangan)}>{row.keterangan}</Badge> },
   ];
-  return <div><PageHeader title="Monitoring Suhu" description="Pantau suhu dan kelembaban ruang secara real-time dari sensor DHT11."><DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-suhu-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} /></PageHeader><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Suhu Terkini" value={latest.suhu ?? '-'} suffix="°C" status={latest.keterangan} icon="🌡️" /><StatCard title="Kelembaban" value={latest.kelembaban ?? '-'} suffix="%" icon="💧" tone="blue" /><StatCard title="Rata-rata Suhu" value={avgTemp} suffix="°C" icon="📊" tone="purple" /><StatCard title="Status" value={latest.keterangan || '-'} icon="✅" tone="green" /></div><div className="mt-6"><ChartCard title="Grafik Suhu dan Kelembaban" description="Riwayat pembacaan sensor per jam."><ResponsiveContainer width="100%" height="100%"><LineChart data={data}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="jam" /><YAxis /><Tooltip /><Legend /><Line type="monotone" dataKey="suhu" name="Suhu °C" stroke="#0891b2" strokeWidth={3} /><Line type="monotone" dataKey="kelembaban" name="Kelembaban %" stroke="#2563eb" strokeWidth={3} /></LineChart></ResponsiveContainer></ChartCard></div><div className="mt-6"><DataTable columns={columns} rows={tableRows} emptyMessage="Belum ada data suhu." /></div></div>;
+  return <div><PageHeader title="Monitoring Suhu" description="Pantau suhu dan kelembaban ruang secara real-time dari sensor DHT11."><DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-suhu-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} /></PageHeader><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Suhu Terkini" value={latest.suhu ?? '-'} suffix="°C" status={latest.keterangan} icon="🌡️" /><StatCard title="Kelembaban" value={latest.kelembaban ?? '-'} suffix="%" icon="💧" tone="blue" /><StatCard title="Rata-rata Suhu" value={avgTemp} suffix="°C" icon="📊" tone="purple" /><StatCard title="Status" value={latest.keterangan || '-'} icon="✅" tone="green" /></div><div className="mt-6"><ChartCard title="Grafik Suhu dan Kelembaban" description="Riwayat pembacaan sensor per jam."><LazyLineChart data={data.slice(-120)} lines={[{ dataKey: 'suhu', name: 'Suhu °C', stroke: '#0891b2', dot: false }, { dataKey: 'kelembaban', name: 'Kelembaban %', stroke: '#2563eb', dot: false }]} /></ChartCard></div><div className="mt-6"><DataTable columns={columns} rows={tableRows} emptyMessage="Belum ada data suhu." /></div></div>;
 }
 
 function RfidPage({ data }) {
@@ -1642,43 +1651,32 @@ function AtsPage({ data }) {
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-3">
         <ChartCard title="Grafik Tegangan" description="Tegangan PLN dan generator per jam.">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="jam" />
-              <YAxis domain={[0, 250]} />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="teganganPln" name="PLN V" stroke="#06b6d4" strokeWidth={3} />
-              <Line type="monotone" dataKey="teganganGenerator" name="Generator V" stroke="#f59e0b" strokeWidth={3} />
-            </LineChart>
-          </ResponsiveContainer>
+          <LazyLineChart
+            data={data.slice(-120)}
+            yDomain={[0, 250]}
+            lines={[
+              { dataKey: 'teganganPln', name: 'PLN V', stroke: '#06b6d4', dot: false },
+              { dataKey: 'teganganGenerator', name: 'Generator V', stroke: '#f59e0b', dot: false },
+            ]}
+          />
         </ChartCard>
         <ChartCard title="Grafik Arus" description="Arus PLN dan generator per jam.">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="jam" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="arusPln" name="PLN A" stroke="#2563eb" strokeWidth={3} />
-              <Line type="monotone" dataKey="arusGenerator" name="Generator A" stroke="#fb7185" strokeWidth={3} />
-            </LineChart>
-          </ResponsiveContainer>
+          <LazyLineChart
+            data={data.slice(-120)}
+            lines={[
+              { dataKey: 'arusPln', name: 'PLN A', stroke: '#2563eb', dot: false },
+              { dataKey: 'arusGenerator', name: 'Generator A', stroke: '#fb7185', dot: false },
+            ]}
+          />
         </ChartCard>
         <ChartCard title="Grafik Watt" description="Daya PLN dan generator per jam.">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="jam" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="wattPln" name="PLN W" stroke="#10b981" strokeWidth={3} />
-              <Line type="monotone" dataKey="wattGenerator" name="Generator W" stroke="#a855f7" strokeWidth={3} />
-            </LineChart>
-          </ResponsiveContainer>
+          <LazyLineChart
+            data={data.slice(-120)}
+            lines={[
+              { dataKey: 'wattPln', name: 'PLN W', stroke: '#10b981', dot: false },
+              { dataKey: 'wattGenerator', name: 'Generator W', stroke: '#a855f7', dot: false },
+            ]}
+          />
         </ChartCard>
       </div>
       <div className="mt-6">
@@ -1891,7 +1889,7 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
               {DEVICE_WIFI_OPTIONS.map((device) => <option key={device} value={device} className="bg-slate-950 text-white">{device}</option>)}
             </select>
           </label>
-          <label className="block lg:col-span-2"><span className="mb-2 block text-sm font-semibold text-slate-200">Username / SSID Jaringan</span><input value={deviceWifiForm.ssid} onChange={(event) => updateDeviceWifi('ssid', event.target.value)} placeholder="Contoh: pppppp" className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none ring-cyan-400 transition placeholder:text-slate-500 focus:ring-2" /></label>
+          <label className="block lg:col-span-2"><span className="mb-2 block text-sm font-semibold text-slate-200">Username / SSID Jaringan</span><input value={deviceWifiForm.ssid} onChange={(event) => updateDeviceWifi('ssid', event.target.value)} placeholder="Username WiFi" className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none ring-cyan-400 transition placeholder:text-slate-500 focus:ring-2" /></label>
           <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-200">Password WiFi</span><PasswordInput value={deviceWifiForm.password} onChange={(event) => updateDeviceWifi('password', event.target.value)} placeholder="Password WiFi" /></label>
           <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-200">Konfirmasi Password WiFi</span><PasswordInput value={deviceWifiForm.confirmPassword} onChange={(event) => updateDeviceWifi('confirmPassword', event.target.value)} placeholder="Ulangi password WiFi" /></label>
           {(deviceWifiError || deviceWifiSuccess) && <div className={classNames('rounded-2xl border px-4 py-3 text-sm font-semibold lg:col-span-2', deviceWifiError ? 'border-rose-300/25 bg-rose-500/10 text-rose-100' : 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100')}>{deviceWifiError || deviceWifiSuccess}</div>}
