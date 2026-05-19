@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://airnav-iot-dashboard-cursor.vercel.app/sitemap.xml
+Sitemap: https://airnavgorontalo.com/sitemap.xml
