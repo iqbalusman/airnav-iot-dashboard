@@ -22,6 +22,7 @@ const SESSION_AUTH_MODE_KEY = 'iot-dashboard-session-auth-mode-v1';
 const JAKARTA_TZ = 'Asia/Makassar';
 const SHEET_TIME_TO_WITA_OFFSET_HOURS = 0;
 const DEFAULT_USER_MANAGEMENT_API = 'https://script.google.com/macros/s/AKfycbx2t74IMPV1VWD76PA-UlWJkydOYftZ5-2QEa1jkV1wysH3A8UuTa2co7YfkqtU4gPaNw/exec';
+const DEVICE_WIFI_OPTIONS = ['ESP32-1', 'ESP32-2', 'ESP32-3'];
 
 const DEFAULT_API_CONFIG = {
   mode: 'dummy',
@@ -948,9 +949,10 @@ async function rejectUserPasswordChangeInSpreadsheet(apiUrl, user, sessionToken)
   }, sessionToken);
 }
 
-async function updateDeviceWifiInSpreadsheet(apiUrl, wifiSsid, wifiPassword) {
+async function updateDeviceWifiInSpreadsheet(apiUrl, device, wifiSsid, wifiPassword) {
   return postStandaloneApiAction(apiUrl, {
     action: 'updatedevicewifi',
+    device,
     wifiSsid,
     wifiPassword,
   }, 'API WiFi ESP32');
@@ -1881,25 +1883,43 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
       <Card className="mt-6 bg-slate-950 text-white"><h2 className="text-lg font-black">Contoh Apps Script</h2><p className="mt-1 text-sm text-slate-300">Deploy sebagai Web App, akses Anyone, lalu tempel URL ke form di atas.</p><pre className="mt-4 overflow-x-auto rounded-2xl bg-black/40 p-4 text-xs leading-6 text-cyan-50"><code>{appScript}</code></pre></Card>
       <Card className="mt-6 bg-slate-950 text-white">
         <h2 className="text-lg font-black">Ubah Username & Password WiFi ESP32</h2>
-        <p className="mt-1 text-sm text-slate-300">Atur username/SSID jaringan dan password WiFi untuk 3 mikrokontroler sekaligus. Ketiga ESP32 membaca konfigurasi terbaru dari API tanpa perlu konek ke komputer.</p>
+        <p className="mt-1 text-sm text-slate-300">Atur username/SSID jaringan dan password WiFi per mikrokontroler. Setiap ESP32 membaca konfigurasi sesuai nama perangkatnya dari API.</p>
         <form onSubmit={(event) => onSaveDeviceWifi(event, form.deviceWifiUrl)} className="mt-5 grid gap-4 lg:grid-cols-2">
+          <label className="block lg:col-span-2">
+            <span className="mb-2 block text-sm font-semibold text-slate-200">Pilih Perangkat</span>
+            <select value={deviceWifiForm.device} onChange={(event) => updateDeviceWifi('device', event.target.value)} className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none ring-cyan-400 transition focus:ring-2">
+              {DEVICE_WIFI_OPTIONS.map((device) => <option key={device} value={device} className="bg-slate-950 text-white">{device}</option>)}
+            </select>
+          </label>
           <label className="block lg:col-span-2"><span className="mb-2 block text-sm font-semibold text-slate-200">Username / SSID Jaringan</span><input value={deviceWifiForm.ssid} onChange={(event) => updateDeviceWifi('ssid', event.target.value)} placeholder="Contoh: pppppp" className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none ring-cyan-400 transition placeholder:text-slate-500 focus:ring-2" /></label>
           <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-200">Password WiFi</span><PasswordInput value={deviceWifiForm.password} onChange={(event) => updateDeviceWifi('password', event.target.value)} placeholder="Password WiFi" /></label>
           <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-200">Konfirmasi Password WiFi</span><PasswordInput value={deviceWifiForm.confirmPassword} onChange={(event) => updateDeviceWifi('confirmPassword', event.target.value)} placeholder="Ulangi password WiFi" /></label>
           {(deviceWifiError || deviceWifiSuccess) && <div className={classNames('rounded-2xl border px-4 py-3 text-sm font-semibold lg:col-span-2', deviceWifiError ? 'border-rose-300/25 bg-rose-500/10 text-rose-100' : 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100')}>{deviceWifiError || deviceWifiSuccess}</div>}
-          {deviceWifiSavedConfig && (
-            <div className="grid gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm text-cyan-50 lg:col-span-2 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-black uppercase tracking-wider text-cyan-100/70">Username / SSID</p>
-                <p className="mt-1 break-all text-base font-black text-white">{deviceWifiSavedConfig.ssid}</p>
-              </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-wider text-cyan-100/70">Password WiFi</p>
-                <p className="mt-1 break-all text-base font-black text-white">{deviceWifiSavedConfig.password}</p>
-              </div>
+          {Object.keys(deviceWifiSavedConfig || {}).length > 0 && (
+            <div className="grid gap-3 lg:col-span-2">
+              {DEVICE_WIFI_OPTIONS.map((device) => {
+                const savedConfig = deviceWifiSavedConfig?.[device];
+                if (!savedConfig) return null;
+                return (
+                  <div key={device} className="grid gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm text-cyan-50 sm:grid-cols-[0.7fr_1fr_1fr]">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wider text-cyan-100/70">Perangkat</p>
+                      <p className="mt-1 break-all text-base font-black text-white">{device}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wider text-cyan-100/70">Username / SSID</p>
+                      <p className="mt-1 break-all text-base font-black text-white">{savedConfig.ssid}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-wider text-cyan-100/70">Password WiFi</p>
+                      <p className="mt-1 break-all text-base font-black text-white">{savedConfig.password}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-          <button type="submit" disabled={deviceWifiLoading} className="rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 lg:col-span-2">{deviceWifiLoading ? 'Menyimpan...' : 'Simpan WiFi ESP32'}</button>
+          <button type="submit" disabled={deviceWifiLoading} className="rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-black text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60 lg:col-span-2">{deviceWifiLoading ? 'Menyimpan...' : `Simpan WiFi ${deviceWifiForm.device}`}</button>
         </form>
       </Card>
     </div>
@@ -1979,12 +1999,24 @@ export default function IoTDashboardApp() {
   const [forgotError, setForgotError] = useState('');
   const [forgotSuccess, setForgotSuccess] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
-  const [deviceWifiForm, setDeviceWifiForm] = useState({ ssid: '', password: '', confirmPassword: '' });
+  const [deviceWifiForm, setDeviceWifiForm] = useState({ device: DEVICE_WIFI_OPTIONS[0], ssid: '', password: '', confirmPassword: '' });
   const [deviceWifiError, setDeviceWifiError] = useState('');
   const [deviceWifiSuccess, setDeviceWifiSuccess] = useState('');
   const [deviceWifiSavedConfig, setDeviceWifiSavedConfig] = useState(() => {
-    const saved = loadJson(DEVICE_WIFI_SAVED_KEY, { ssid: '', password: '' });
-    return saved.ssid || saved.password ? saved : null;
+    const saved = loadJson(DEVICE_WIFI_SAVED_KEY, {});
+
+    if (saved?.ssid || saved?.password) {
+      const device = saved.device || DEVICE_WIFI_OPTIONS[0];
+      return {
+        [device]: {
+          device,
+          ssid: saved.ssid || '',
+          password: saved.password || '',
+        },
+      };
+    }
+
+    return saved && typeof saved === 'object' ? saved : {};
   });
   const [deviceWifiLoading, setDeviceWifiLoading] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
@@ -2514,12 +2546,18 @@ export default function IoTDashboardApp() {
     setDeviceWifiError('');
     setDeviceWifiSuccess('');
 
+    const device = String(deviceWifiForm.device || DEVICE_WIFI_OPTIONS[0]).trim();
     const ssid = deviceWifiForm.ssid.trim();
     const password = deviceWifiForm.password.trim();
     const confirmPassword = deviceWifiForm.confirmPassword.trim();
 
-    if (!ssid || !password || !confirmPassword) {
-      setDeviceWifiError('SSID/username WiFi, password, dan konfirmasi wajib diisi.');
+    if (!device || !ssid || !password || !confirmPassword) {
+      setDeviceWifiError('Perangkat, SSID/username WiFi, password, dan konfirmasi wajib diisi.');
+      return;
+    }
+
+    if (!DEVICE_WIFI_OPTIONS.includes(device)) {
+      setDeviceWifiError('Perangkat ESP32 tidak dikenali.');
       return;
     }
 
@@ -2542,12 +2580,19 @@ export default function IoTDashboardApp() {
 
     setDeviceWifiLoading(true);
     try {
-      const result = await updateDeviceWifiInSpreadsheet(targetApiUrl, ssid, password);
-      const savedConfig = { ssid, password };
-      setDeviceWifiForm({ ssid: '', password: '', confirmPassword: '' });
-      setDeviceWifiSavedConfig(savedConfig);
-      saveJson(DEVICE_WIFI_SAVED_KEY, savedConfig);
-      setDeviceWifiSuccess(result.message || 'Konfigurasi WiFi ESP32 berhasil dikirim. Ketiga mikrokontroler akan memakai nilai baru saat membaca API berikutnya.');
+      const result = await updateDeviceWifiInSpreadsheet(targetApiUrl, device, ssid, password);
+      const savedConfig = { device, ssid, password };
+
+      setDeviceWifiForm({ device, ssid: '', password: '', confirmPassword: '' });
+      setDeviceWifiSavedConfig((previousConfig) => {
+        const nextConfig = {
+          ...(previousConfig || {}),
+          [device]: savedConfig,
+        };
+        saveJson(DEVICE_WIFI_SAVED_KEY, nextConfig);
+        return nextConfig;
+      });
+      setDeviceWifiSuccess(result.message || `Konfigurasi WiFi ${device} berhasil dikirim. Perangkat itu akan memakai nilai baru saat membaca API berikutnya.`);
     } catch (error) {
       console.error('Gagal menyimpan WiFi ESP32.', error);
       setDeviceWifiError(error.message || 'Gagal menyimpan WiFi ESP32. Pastikan API WiFi ESP32 aktif.');
