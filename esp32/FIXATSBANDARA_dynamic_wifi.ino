@@ -102,6 +102,12 @@ String extractJsonValue(String json, String key) {
   return value;
 }
 
+String firstNotEmpty(String first, String second, String third) {
+  if (first.length() > 0) return first;
+  if (second.length() > 0) return second;
+  return third;
+}
+
 // ===================== WIFI MEMORY =====================
 void loadWifiFromMemory() {
   preferences.begin("wifi-config", false);
@@ -245,8 +251,16 @@ bool fetchWifiConfigFromApi() {
   Serial.println("Response WiFi config:");
   Serial.println(response);
 
-  String newSsid = extractJsonValue(response, "ssid");
-  String newPassword = extractJsonValue(response, "password");
+  String newSsid = firstNotEmpty(
+    extractJsonValue(response, "ssid"),
+    extractJsonValue(response, "wifiSsid"),
+    extractJsonValue(response, "SSID")
+  );
+  String newPassword = firstNotEmpty(
+    extractJsonValue(response, "password"),
+    extractJsonValue(response, "wifiPassword"),
+    extractJsonValue(response, "Password")
+  );
 
   if (newSsid.length() == 0 || newPassword.length() == 0) {
     Serial.println("SSID/password dari API kosong atau JSON tidak sesuai.");

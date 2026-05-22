@@ -945,6 +945,8 @@ async function updateDeviceWifiInSpreadsheet(apiUrl, device, wifiSsid, wifiPassw
   return postStandaloneApiAction(apiUrl, {
     action: 'updatedevicewifi',
     device,
+    ssid: wifiSsid,
+    password: wifiPassword,
     wifiSsid,
     wifiPassword,
   }, 'API WiFi ESP32');
@@ -1850,6 +1852,87 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
   const data = rows.map(row => Object.fromEntries(headers.map((h, i) => [h, row[i]])));
   return ContentService.createTextOutput(JSON.stringify({ data })).setMimeType(ContentService.MimeType.JSON);
 }`;
+  const wifiAppScript = `const WIFI_SHEET_NAME = "wifi_config";
+
+function jsonOutput(data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function getWifiSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(WIFI_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(WIFI_SHEET_NAME);
+    sheet.appendRow(["Device", "SSID", "Password", "UpdatedAt"]);
+  }
+  return sheet;
+}
+
+function readBody(e) {
+  if (!e || !e.postData || !e.postData.contents) return {};
+  try {
+    return JSON.parse(e.postData.contents);
+  } catch (error) {
+    return {};
+  }
+}
+
+function doGet(e) {
+  const action = String(e.parameter.action || "").toLowerCase();
+  if (action !== "getdevicewifi") {
+    return jsonOutput({ success: false, message: "Action tidak dikenali." });
+  }
+
+  const device = String(e.parameter.device || "").trim();
+  const sheet = getWifiSheet();
+  const rows = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === device) {
+      return jsonOutput({
+        success: true,
+        device,
+        ssid: String(rows[i][1] || ""),
+        password: String(rows[i][2] || ""),
+        updatedAt: rows[i][3] || "",
+      });
+    }
+  }
+
+  return jsonOutput({ success: false, message: "Device belum terdaftar." });
+}
+
+function doPost(e) {
+  const body = readBody(e);
+  const action = String(body.action || "").toLowerCase();
+  if (action !== "updatedevicewifi") {
+    return jsonOutput({ success: false, message: "Action tidak dikenali." });
+  }
+
+  const device = String(body.device || "").trim();
+  const ssid = String(body.ssid || body.wifiSsid || "").trim();
+  const password = String(body.password || body.wifiPassword || "").trim();
+
+  if (!device || !ssid || !password) {
+    return jsonOutput({ success: false, message: "Device, SSID, dan password wajib diisi." });
+  }
+
+  const sheet = getWifiSheet();
+  const rows = sheet.getDataRange().getValues();
+  const updatedAt = new Date();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === device) {
+      sheet.getRange(i + 1, 2, 1, 3).setValues([[ssid, password, updatedAt]]);
+      return jsonOutput({ success: true, message: "WiFi device diperbarui.", device, ssid, password });
+    }
+  }
+
+  sheet.appendRow([device, ssid, password, updatedAt]);
+  return jsonOutput({ success: true, message: "WiFi device ditambahkan.", device, ssid, password });
+}`;
   return (
     <div>
       <PageHeader title="Pengaturan API" description="Sambungkan dashboard ke Google Apps Script Web App yang mengembalikan JSON dari Google Sheet." />
@@ -1879,6 +1962,7 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
         </Card>
       </div>
       <Card className="mt-6 bg-slate-950 text-white"><h2 className="text-lg font-black">Contoh Apps Script</h2><p className="mt-1 text-sm text-slate-300">Deploy sebagai Web App, akses Anyone, lalu tempel URL ke form di atas.</p><pre className="mt-4 overflow-x-auto rounded-2xl bg-black/40 p-4 text-xs leading-6 text-cyan-50"><code>{appScript}</code></pre></Card>
+      <Card className="mt-6 bg-slate-950 text-white"><h2 className="text-lg font-black">Contoh Apps Script WiFi ESP32</h2><p className="mt-1 text-sm text-slate-300">Pakai script ini untuk API WiFi ESP32. URL deploy yang sama juga harus diisi ke konstanta WIFI_CONFIG_API di sketch ESP32.</p><pre className="mt-4 overflow-x-auto rounded-2xl bg-black/40 p-4 text-xs leading-6 text-cyan-50"><code>{wifiAppScript}</code></pre></Card>
       <Card className="mt-6 bg-slate-950 text-white">
         <h2 className="text-lg font-black">Ubah Username & Password WiFi ESP32</h2>
         <p className="mt-1 text-sm text-slate-300">Atur username/SSID jaringan dan password WiFi per mikrokontroler. Setiap ESP32 membaca konfigurasi sesuai nama perangkatnya dari API.</p>
@@ -2590,7 +2674,7 @@ export default function IoTDashboardApp() {
         saveJson(DEVICE_WIFI_SAVED_KEY, nextConfig);
         return nextConfig;
       });
-      setDeviceWifiSuccess(result.message || `Konfigurasi WiFi ${device} berhasil dikirim. Perangkat itu akan memakai nilai baru saat membaca API berikutnya.`);
+      setDeviceWifiSuccess(result.message || `Konfigurasi WiFi ${device} sudah dikirim. Jika perangkat belum berubah, buka Serial Monitor dan pastikan WIFI_CONFIG_API di sketch sama dengan API WiFi ESP32.`);
     } catch (error) {
       console.error('Gagal menyimpan WiFi ESP32.', error);
       setDeviceWifiError(error.message || 'Gagal menyimpan WiFi ESP32. Pastikan API WiFi ESP32 aktif.');
