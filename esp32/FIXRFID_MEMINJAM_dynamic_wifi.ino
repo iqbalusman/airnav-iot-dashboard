@@ -25,7 +25,7 @@ String activeSsid = "";
 String activePassword = "";
 
 unsigned long lastWifiConfigCheck = 0;
-const unsigned long WIFI_CONFIG_CHECK_INTERVAL = 1000;
+const unsigned long WIFI_CONFIG_CHECK_INTERVAL = 60000;
 const uint16_t HTTP_TIMEOUT_MS = 10000;
 
 // ===================== RFID PIN =====================
@@ -596,6 +596,7 @@ void setup() {
   loadWifiFromMemory();
   connectWiFi();
   fetchWifiConfigFromApi();
+  lastWifiConfigCheck = millis();
 
   SPI.begin(18, 19, 23, SS_PIN);
   rfid.PCD_Init();
