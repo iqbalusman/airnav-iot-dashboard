@@ -595,6 +595,7 @@ function normalizeRfid(payload) {
   return normalizeRows(payload).map((row, index) => {
     const timestamp = row.timestamp ?? row.Timestamp ?? new Date().toISOString();
     const rawJam = row.jam ?? row.Jam ?? timestamp;
+    const rawStatus = row.status ?? row.Status ?? 'PERINGATAN';
     const durasi = row.durasi ?? row.Durasi ?? row['Durasi Peminjaman'] ?? row.durasiPeminjaman ?? row['Lama Peminjaman'] ?? '-';
     const rawDurasiDetik = row.durasiDetik ?? row['Durasi Detik'] ?? row.durasiSeconds ?? row['Durasi Seconds'];
     const durasiDetik = Number.isFinite(parseSheetNumber(rawDurasiDetik, NaN))
@@ -607,7 +608,7 @@ function normalizeRfid(payload) {
       jam: formatSheetTime(rawJam),
       uid: row.uid ?? row.UID ?? row['UID Kartu'] ?? '-',
       namaAlat: row.namaAlat ?? row['Nama Alat'] ?? row.alat ?? row.Alat ?? 'Tidak Terdaftar',
-      status: row.status ?? row.Status ?? 'PERINGATAN',
+      status: normalizeRfidStatus(rawStatus),
       keterangan: row.keterangan ?? row.Keterangan ?? '-',
       durasi,
       durasiDetik,
@@ -1060,6 +1061,20 @@ function isReturnedStatus(status) {
   return value === 'DIKEMBALIKAN' || value === 'MENGEMBALIKAN';
 }
 
+function normalizeRfidStatus(status) {
+  const value = String(status || '').trim().toUpperCase();
+  if (value === 'MEMINJAM') return 'DIPINJAM';
+  if (value === 'MENGEMBALIKAN') return 'DIKEMBALIKAN';
+  return value || 'PERINGATAN';
+}
+
+function normalizeToolName(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+}
+
 function buildToolDurationRows(rows) {
   const grouped = rows.reduce((result, row) => {
     const toolName = String(row.namaAlat || 'Tidak Diketahui').trim() || 'Tidak Diketahui';
@@ -1091,25 +1106,43 @@ function buildToolDurationRows(rows) {
 }
 
 function buildLatestRfidToolStatus(rows) {
-  const latestByUid = rows
+  const validRows = rows.filter((row) => row.status !== 'PERINGATAN' && row.namaAlat !== 'Tidak Terdaftar');
+  const latestByKey = validRows
     .filter((row) => row.status !== 'PERINGATAN' && row.namaAlat !== 'Tidak Terdaftar')
     .reduce((result, row, index) => {
       const uid = String(row.uid || '').trim().toUpperCase();
-      if (!uid) return result;
+      const toolName = normalizeToolName(row.namaAlat);
+      const keys = [uid, toolName].filter(Boolean);
 
-      const previous = result[uid];
-      if (!previous || timeScore(row, index) >= timeScore(previous.row, previous.index)) {
-        result[uid] = { row, index };
-      }
+      keys.forEach((key) => {
+        const previous = result[key];
+        if (!previous || timeScore(row, index) >= timeScore(previous.row, previous.index)) {
+          result[key] = { row, index };
+        }
+      });
 
       return result;
     }, {});
+  const toolsByName = RFID_TOOL_ITEMS.reduce((result, tool) => {
+    result[normalizeToolName(tool.namaAlat)] = { ...tool };
+    return result;
+  }, {});
 
-  return RFID_TOOL_ITEMS.map((tool) => {
-    const latest = latestByUid[tool.uid]?.row;
+  validRows.forEach((row) => {
+    const toolName = normalizeToolName(row.namaAlat);
+    if (!toolName || toolsByName[toolName]) return;
+
+    toolsByName[toolName] = {
+      uid: String(row.uid || '').trim().toUpperCase() || '-',
+      namaAlat: row.namaAlat,
+    };
+  });
+
+  return Object.values(toolsByName).map((tool) => {
+    const latest = latestByKey[tool.uid]?.row || latestByKey[normalizeToolName(tool.namaAlat)]?.row;
 
     return {
-      uid: tool.uid,
+      uid: latest?.uid || tool.uid,
       namaAlat: latest?.namaAlat || tool.namaAlat,
       status: latest?.status || 'BELUM ADA DATA',
       jam: latest?.jam || '--:--:--',
