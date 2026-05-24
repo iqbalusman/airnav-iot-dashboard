@@ -4,44 +4,30 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
-#include <time.h>
 
 // ===================== MODE SISTEM =====================
-// Pilihan:
-// "MEMINJAM"
-// "MENGEMBALIKAN"
-String MODE_STATUS = "MENGEMBALIKAN";
+String MODE_STATUS = "DIKEMBALIKAN";
+const bool WAJIB_CEK_STATUS_DARI_SHEET = true;
 
 // ===================== WIFI DINAMIS =====================
-// WiFi default dipakai pertama kali upload.
-// Setelah WiFi dari dashboard tersimpan di Preferences, sketch memakai data memori.
 const char* DEFAULT_SSID = "FAZ NET";
 const char* DEFAULT_PASSWORD = "Gantengkalem1";
 const bool ENABLE_DEFAULT_FALLBACK = false; // true kalau ingin coba WiFi default saat WiFi tersimpan gagal.
 
-// Ganti sesuai alat:
-// ESP32-1, ESP32-2, atau ESP32-3
+// ESP DIKEMBALIKAN disarankan memakai ESP32-2.
 const char* DEVICE_NAME = "ESP32-2";
 
-// Isi dengan URL Apps Script yang sama dengan API WiFi ESP32 di website.
-const char* WIFI_CONFIG_API = "https://script.google.com/macros/s/URL_APPS_SCRIPT_WIFI_KAMU/exec";
+const char* WIFI_CONFIG_API = "https://script.google.com/macros/s/AKfycbxhFVEGoUNd8NhHRwOrpn8MfTJltsJ90lXWXi_1Jc0UMAFiYXcrlL7SspcnTTp_3UIe/exec";
+const char* serverName = "https://script.google.com/macros/s/AKfycbxtiN6rKnkHZDJeaNGjsCCJimDGzhU12C3RsL2gA3zuy8jVEXEq5pd38Dlkb0NIq54F/exec";
 
 Preferences preferences;
-Preferences loanPreferences;
 
 String activeSsid = "";
 String activePassword = "";
 
 unsigned long lastWifiConfigCheck = 0;
-const unsigned long WIFI_CONFIG_CHECK_INTERVAL = 60000;
-
-// ===================== WAKTU WITA =====================
-const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 8 * 3600; // WITA = UTC+8
-const int daylightOffset_sec = 0;
-
-// URL Web App Google Apps Script /exec untuk data RFID
-const char* serverName = "https://script.google.com/macros/s/AKfycbxtiN6rKnkHZDJeaNGjsCCJimDGzhU12C3RsL2gA3zuy8jVEXEq5pd38Dlkb0NIq54F/exec";
+const unsigned long WIFI_CONFIG_CHECK_INTERVAL = 1000;
+const uint16_t HTTP_TIMEOUT_MS = 10000;
 
 // ===================== RFID PIN =====================
 #define SS_PIN       5
@@ -49,19 +35,26 @@ const char* serverName = "https://script.google.com/macros/s/AKfycbxtiN6rKnkHZDJ
 
 // ===================== OUTPUT PIN =====================
 #define LED_OK       2
+#define LED_MERAH    27
 #define BUZZER_PIN   4
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
 // ===================== DATA UID ALAT =====================
-String UID_OBENG      = "BD27B889";
-String UID_TANG       = "FB7F8005";
-String UID_MULTIMETER = "D065DF5F";
-String UID_SOLDER     = "40EA4561";
-String UID_TESPEN     = "D019CD5F";
+String UID_OBENG_SET     = "BD27B889";
+String UID_LAN_TESTER    = "40616A61";
+String UID_MULTIMETER    = "D065DF5F";
+String UID_SOLDER_UAP    = "30D85561";
+String UID_WATT_METER    = "D019CD5F";
+String UID_BOR_PORTABEL  = "00BA9E60";
+String UID_OSCILLOSCOPE  = "FB7F8005";
+
+// ===================== ANTI DOUBLE RETURN SEMENTARA =====================
+String lastReturnedUid = "";
+unsigned long lastReturnedAt = 0;
+const unsigned long SAME_RETURN_REJECT_MS = 8000;
 
 // ===================== JSON SEDERHANA =====================
-// Bisa membaca value JSON yang berupa string ataupun angka.
 String extractJsonValue(String json, String key) {
   String pattern = "\"" + key + "\":";
   int start = json.indexOf(pattern);
@@ -85,7 +78,6 @@ String extractJsonValue(String json, String key) {
 
   int endComma = json.indexOf(",", start);
   int endBrace = json.indexOf("}", start);
-
   int end = -1;
 
   if (endComma >= 0 && endBrace >= 0) {
@@ -128,88 +120,6 @@ void saveWifiToMemory(String newSsid, String newPassword) {
   activePassword = newPassword;
 }
 
-// ===================== WAKTU PEMINJAMAN =====================
-String loanKeyFromUid(String uid) {
-  String key = "u";
-
-  for (int i = 0; i < uid.length() && key.length() < 15; i++) {
-    char c = uid[i];
-    if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F')) {
-      key += c;
-    }
-  }
-
-  return key;
-}
-
-unsigned long getCurrentEpoch() {
-  time_t now;
-  time(&now);
-
-  if (now < 1700000000) {
-    return 0;
-  }
-
-  return (unsigned long)now;
-}
-
-String formatDuration(unsigned long durationSeconds) {
-  unsigned long days = durationSeconds / 86400UL;
-  unsigned long hours = (durationSeconds % 86400UL) / 3600UL;
-  unsigned long minutes = (durationSeconds % 3600UL) / 60UL;
-  unsigned long seconds = durationSeconds % 60UL;
-
-  String text = "";
-
-  if (days > 0) {
-    text += String(days) + " hari ";
-  }
-  if (hours > 0 || days > 0) {
-    text += String(hours) + " jam ";
-  }
-  if (minutes > 0 || hours > 0 || days > 0) {
-    text += String(minutes) + " menit ";
-  }
-  text += String(seconds) + " detik";
-
-  return text;
-}
-
-void syncTime() {
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-  Serial.println("Sinkron waktu NTP...");
-
-  struct tm timeinfo;
-  int retry = 0;
-
-  while (!getLocalTime(&timeinfo) && retry < 20) {
-    delay(500);
-    retry++;
-    Serial.print(".");
-  }
-
-  Serial.println();
-
-  if (getLocalTime(&timeinfo)) {
-    Serial.println("Waktu WITA aktif.");
-  } else {
-    Serial.println("Waktu NTP gagal. Durasi peminjaman mungkin tidak bisa dihitung.");
-  }
-}
-
-unsigned long getLoanStartTime(String uid) {
-  return loanPreferences.getULong(loanKeyFromUid(uid).c_str(), 0);
-}
-
-void saveLoanStartTime(String uid, unsigned long startTime) {
-  loanPreferences.putULong(loanKeyFromUid(uid).c_str(), startTime);
-}
-
-void clearLoanStartTime(String uid) {
-  loanPreferences.remove(loanKeyFromUid(uid).c_str());
-}
-
 // ===================== WIFI CONNECT =====================
 void connectWiFi() {
   Serial.print("Connecting WiFi: ");
@@ -221,11 +131,11 @@ void connectWiFi() {
   int retry = 0;
 
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    delay(300);
     Serial.print(".");
     retry++;
 
-    if (retry > 40) {
+    if (retry > 50) {
       Serial.println();
       Serial.println("Gagal konek WiFi utama.");
 
@@ -236,17 +146,17 @@ void connectWiFi() {
         activePassword = DEFAULT_PASSWORD;
 
         WiFi.disconnect(true);
-        delay(1000);
+        delay(500);
         WiFi.begin(activeSsid.c_str(), activePassword.c_str());
 
         retry = 0;
 
         while (WiFi.status() != WL_CONNECTED) {
-          delay(500);
+          delay(300);
           Serial.print(".");
           retry++;
 
-          if (retry > 40) {
+          if (retry > 50) {
             Serial.println();
             Serial.println("Fallback juga gagal, ESP32 restart...");
             ESP.restart();
@@ -289,7 +199,7 @@ bool fetchWifiConfigFromApi() {
   }
 
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setTimeout(15000);
+  http.setTimeout(HTTP_TIMEOUT_MS);
 
   int httpCode = http.GET();
 
@@ -353,39 +263,154 @@ String getUIDString() {
 
 // ===================== CARI NAMA ALAT DARI UID =====================
 String getNamaAlat(String uid) {
-  if (uid == UID_OBENG) {
-    return "OBENG";
-  } else if (uid == UID_TANG) {
-    return "TANG";
-  } else if (uid == UID_MULTIMETER) {
-    return "MULTIMETER";
-  } else if (uid == UID_SOLDER) {
-    return "SOLDER";
-  } else if (uid == UID_TESPEN) {
-    return "TESPEN";
-  }
+  if (uid == UID_OBENG_SET) return "OBENG SET";
+  if (uid == UID_LAN_TESTER) return "LAN TESTER";
+  if (uid == UID_MULTIMETER) return "MULTIMETER";
+  if (uid == UID_SOLDER_UAP) return "SOLDER UAP";
+  if (uid == UID_WATT_METER) return "WATT METER";
+  if (uid == UID_BOR_PORTABEL) return "BOR PORTABEL";
+  if (uid == UID_OSCILLOSCOPE) return "OSCILLOSCOPE";
 
   return "TIDAK TERDAFTAR";
 }
 
-// ===================== BUZZER =====================
-void buzzerOK() {
-  digitalWrite(BUZZER_PIN, HIGH);
-  delay(150);
+// ===================== OUTPUT LED + BUZZER =====================
+void matikanOutput() {
+  digitalWrite(LED_OK, LOW);
+  digitalWrite(LED_MERAH, LOW);
   digitalWrite(BUZZER_PIN, LOW);
 }
 
-void buzzerError() {
+void bunyiScanAwal() {
+  digitalWrite(LED_OK, LOW);
+  digitalWrite(LED_MERAH, LOW);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(80);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void hasilBerhasilHijau() {
+  digitalWrite(LED_MERAH, LOW);
+  digitalWrite(LED_OK, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(120);
+  digitalWrite(BUZZER_PIN, LOW);
+  delay(1000);
+  matikanOutput();
+}
+
+void nyalakanHijauStatusSesuai() {
+  digitalWrite(LED_MERAH, LOW);
+  digitalWrite(LED_OK, HIGH);
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(120);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void hasilGagalMerahDuaKali() {
+  digitalWrite(LED_OK, LOW);
+  digitalWrite(LED_MERAH, HIGH);
+  delay(60);
+
+  for (int i = 0; i < 2; i++) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(180);
+    digitalWrite(BUZZER_PIN, LOW);
+    delay(180);
+  }
+
+  delay(500);
+  matikanOutput();
+}
+
+void hasilErrorInternet() {
+  digitalWrite(LED_OK, LOW);
+  digitalWrite(LED_MERAH, HIGH);
+  delay(60);
+
   for (int i = 0; i < 3; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
-    delay(100);
+    delay(120);
     digitalWrite(BUZZER_PIN, LOW);
     delay(100);
   }
+
+  delay(500);
+  matikanOutput();
+}
+
+// ===================== CEK STATUS TERAKHIR DARI SPREADSHEET =====================
+bool cekStatusTerakhirDariSheet(String uid, String namaAlat, String &statusTerakhir) {
+  statusTerakhir = "";
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi putus, reconnect sebelum cek status...");
+    connectWiFi();
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+  String url = String(serverName) + "?action=cekstatus&uid=" + uid;
+
+  Serial.println("Cek status terakhir alat dari Spreadsheet:");
+  Serial.println(url);
+
+  if (!http.begin(client, url)) {
+    Serial.println("Gagal mulai HTTP cek status.");
+    return false;
+  }
+
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+
+  int httpCode = http.GET();
+
+  Serial.print("HTTP Cek Status: ");
+  Serial.println(httpCode);
+
+  if (httpCode <= 0) {
+    Serial.println(http.errorToString(httpCode));
+    http.end();
+    return false;
+  }
+
+  String response = http.getString();
+  http.end();
+
+  Serial.println("Response cek status:");
+  Serial.println(response);
+
+  statusTerakhir = extractJsonValue(response, "lastStatus");
+  if (statusTerakhir.length() == 0) statusTerakhir = extractJsonValue(response, "statusTerakhir");
+  if (statusTerakhir.length() == 0) statusTerakhir = extractJsonValue(response, "last_status");
+  if (statusTerakhir.length() == 0) statusTerakhir = extractJsonValue(response, "status");
+
+  statusTerakhir.trim();
+  statusTerakhir.toUpperCase();
+
+  if (statusTerakhir.length() == 0) {
+    Serial.println("Status terakhir kosong. Pastikan Apps Script punya action=cekstatus.");
+    return false;
+  }
+
+  Serial.print("Status terakhir dari Sheet: ");
+  Serial.println(statusTerakhir);
+
+  return true;
+}
+
+bool statusBolehMengembalikan(String statusTerakhir) {
+  statusTerakhir.trim();
+  statusTerakhir.toUpperCase();
+
+  return statusTerakhir == "MEMINJAM"
+    || statusTerakhir == "DIPINJAM";
 }
 
 // ===================== KIRIM DATA KE GOOGLE SHEET =====================
-void sendToGoogleSheet(String uid, String namaAlat, String status, String keterangan, String durasi, unsigned long durasiDetik) {
+bool sendToGoogleSheet(String uid, String namaAlat, String status, String keterangan) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi putus, reconnect...");
     connectWiFi();
@@ -400,20 +425,21 @@ void sendToGoogleSheet(String uid, String namaAlat, String status, String ketera
 
   if (!http.begin(client, serverName)) {
     Serial.println("Gagal connect HTTP");
-    return;
+    return false;
   }
 
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setTimeout(15000);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
 
   String jsonData = "{";
   jsonData += "\"uid\":\"" + uid + "\",";
   jsonData += "\"alat\":\"" + namaAlat + "\",";
   jsonData += "\"status\":\"" + status + "\",";
+  jsonData += "\"device\":\"" + String(DEVICE_NAME) + "\",";
   jsonData += "\"ket\":\"" + keterangan + "\",";
-  jsonData += "\"durasi\":\"" + durasi + "\",";
-  jsonData += "\"durasiDetik\":" + String(durasiDetik);
+  jsonData += "\"durasi\":\"Tidak terdeteksi\",";
+  jsonData += "\"durasiDetik\":0";
   jsonData += "}";
 
   Serial.println("Kirim JSON ke Spreadsheet:");
@@ -424,16 +450,101 @@ void sendToGoogleSheet(String uid, String namaAlat, String status, String ketera
   Serial.print("HTTP Response: ");
   Serial.println(httpResponseCode);
 
+  bool sukses = false;
+
   if (httpResponseCode > 0) {
     String response = http.getString();
     Serial.println("Response dari Apps Script:");
     Serial.println(response);
+
+    if (httpResponseCode >= 200 && httpResponseCode < 400) {
+      sukses = true;
+    }
   } else {
     Serial.print("HTTP Error: ");
     Serial.println(http.errorToString(httpResponseCode));
   }
 
   http.end();
+  return sukses;
+}
+
+// ===================== PROSES RFID =====================
+void prosesKartu(String uid, String namaAlat) {
+  Serial.println();
+  Serial.println("====================================");
+  Serial.print("UID Kartu : ");
+  Serial.println(uid);
+  Serial.print("Nama Alat : ");
+  Serial.println(namaAlat);
+
+  bunyiScanAwal();
+
+  if (namaAlat == "TIDAK TERDAFTAR") {
+    Serial.println("Status    : DITOLAK");
+    Serial.println("Ket       : RFID tidak terdaftar. Data tidak dikirim.");
+    hasilGagalMerahDuaKali();
+    return;
+  }
+
+  if (uid == lastReturnedUid && millis() - lastReturnedAt < SAME_RETURN_REJECT_MS) {
+    Serial.println("Status    : DITOLAK");
+    Serial.print("Ket       : ");
+    Serial.print(namaAlat);
+    Serial.println(" baru saja dikembalikan. Tidak boleh input ulang.");
+    hasilGagalMerahDuaKali();
+    return;
+  }
+
+  if (WAJIB_CEK_STATUS_DARI_SHEET) {
+    String statusTerakhir = "";
+    bool berhasilCek = cekStatusTerakhirDariSheet(uid, namaAlat, statusTerakhir);
+
+    if (!berhasilCek) {
+      Serial.println("Status    : DITOLAK");
+      Serial.println("Ket       : Gagal cek status terakhir dari Spreadsheet.");
+      hasilErrorInternet();
+      return;
+    }
+
+    if (!statusBolehMengembalikan(statusTerakhir)) {
+      Serial.println("Status    : DITOLAK");
+      Serial.print("Ket       : ");
+      Serial.print(namaAlat);
+      Serial.print(" status terakhirnya ");
+      Serial.print(statusTerakhir);
+      Serial.println(", jadi tidak boleh dikembalikan.");
+      hasilGagalMerahDuaKali();
+      return;
+    }
+  }
+
+  String status = MODE_STATUS;
+  String keterangan = namaAlat + " telah dikembalikan";
+
+  Serial.print("Status    : ");
+  Serial.println(status);
+  Serial.print("Ket       : ");
+  Serial.println(keterangan);
+  Serial.println("Cek status sesuai: alat boleh dikembalikan.");
+
+  nyalakanHijauStatusSesuai();
+
+  bool suksesKirim = sendToGoogleSheet(uid, namaAlat, status, keterangan);
+
+  if (suksesKirim) {
+    Serial.println("Pengembalian berhasil dicatat di Spreadsheet.");
+
+    lastReturnedUid = uid;
+    lastReturnedAt = millis();
+
+    delay(1000);
+    matikanOutput();
+  } else {
+    matikanOutput();
+    Serial.println("Gagal kirim data pengembalian ke Spreadsheet.");
+    hasilErrorInternet();
+  }
 }
 
 // ===================== SETUP =====================
@@ -442,123 +553,60 @@ void setup() {
   delay(1000);
 
   pinMode(LED_OK, OUTPUT);
+  pinMode(LED_MERAH, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
 
-  digitalWrite(LED_OK, LOW);
-  digitalWrite(BUZZER_PIN, LOW);
+  matikanOutput();
 
   Serial.println("====================================");
-  Serial.println("RFID + WiFi Dinamis + Spreadsheet");
+  Serial.println("RFID ESP32 - MODE DIKEMBALIKAN");
   Serial.print("Mode Sistem: ");
   Serial.println(MODE_STATUS);
   Serial.print("Device Name: ");
   Serial.println(DEVICE_NAME);
-  Serial.println("Alat: OBENG, TANG, MULTIMETER, SOLDER, TESPEN");
+  Serial.print("Wajib cek status dari Sheet: ");
+  Serial.println(WAJIB_CEK_STATUS_DARI_SHEET ? "YA" : "TIDAK");
+  Serial.println("Alat:");
+  Serial.println("1. OBENG SET");
+  Serial.println("2. LAN TESTER");
+  Serial.println("3. MULTIMETER");
+  Serial.println("4. SOLDER UAP");
+  Serial.println("5. WATT METER");
+  Serial.println("6. BOR PORTABEL");
+  Serial.println("7. OSCILLOSCOPE");
   Serial.println("====================================");
 
   loadWifiFromMemory();
-  loanPreferences.begin("rfid-loans", false);
   connectWiFi();
   fetchWifiConfigFromApi();
-  syncTime();
 
-  // SCK, MISO, MOSI, SS
   SPI.begin(18, 19, 23, SS_PIN);
   rfid.PCD_Init();
 
   Serial.println("RFID siap.");
-  Serial.println("Tempelkan tag RFID alat ke RC522...");
+  Serial.println("Tempelkan tag RFID alat yang akan dikembalikan...");
   Serial.println("====================================");
 }
 
 // ===================== LOOP =====================
 void loop() {
-  if (millis() - lastWifiConfigCheck > WIFI_CONFIG_CHECK_INTERVAL) {
-    lastWifiConfigCheck = millis();
-    fetchWifiConfigFromApi();
-  }
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    String uid = getUIDString();
+    String namaAlat = getNamaAlat(uid);
 
-  if (!rfid.PICC_IsNewCardPresent()) return;
-  if (!rfid.PICC_ReadCardSerial()) return;
+    prosesKartu(uid, namaAlat);
 
-  String uid = getUIDString();
-  String namaAlat = getNamaAlat(uid);
-
-  Serial.println();
-  Serial.println("====================================");
-  Serial.print("UID Kartu : ");
-  Serial.println(uid);
-  Serial.print("Nama Alat : ");
-  Serial.println(namaAlat);
-
-  if (namaAlat == "TIDAK TERDAFTAR") {
-    Serial.println("Status    : RFID tidak terdaftar!");
-    buzzerError();
+    Serial.println("====================================");
 
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
 
-    delay(1500);
+    delay(400);
     return;
   }
 
-  String status = MODE_STATUS;
-  String keterangan = "";
-  String durasi = "-";
-  unsigned long durasiDetik = 0;
-  unsigned long nowEpoch = getCurrentEpoch();
-
-  if (status == "MEMINJAM") {
-    if (nowEpoch > 0) {
-      saveLoanStartTime(uid, nowEpoch);
-    }
-
-    keterangan = namaAlat + " sedang dipinjam";
-  } else if (status == "MENGEMBALIKAN") {
-    unsigned long startEpoch = getLoanStartTime(uid);
-
-    if (startEpoch > 0 && nowEpoch >= startEpoch) {
-      durasiDetik = nowEpoch - startEpoch;
-      durasi = formatDuration(durasiDetik);
-      clearLoanStartTime(uid);
-      keterangan = namaAlat + " telah dikembalikan. Durasi pinjam: " + durasi;
-    } else {
-      durasi = "Tidak terdeteksi";
-      durasiDetik = 0;
-      keterangan = namaAlat + " telah dikembalikan. Waktu mulai pinjam tidak terdeteksi";
-    }
-  } else {
-    status = "ERROR";
-    keterangan = "Mode status tidak valid";
+  if (millis() - lastWifiConfigCheck > WIFI_CONFIG_CHECK_INTERVAL) {
+    lastWifiConfigCheck = millis();
+    fetchWifiConfigFromApi();
   }
-
-  if (status == "MEMINJAM") {
-    durasi = "Sedang berjalan";
-    durasiDetik = 0;
-  } else if (status == "MENGEMBALIKAN" && keterangan == "") {
-    keterangan = namaAlat + " telah dikembalikan";
-  }
-
-  Serial.print("Status    : ");
-  Serial.println(status);
-  Serial.print("Ket       : ");
-  Serial.println(keterangan);
-  Serial.print("Durasi    : ");
-  Serial.println(durasi);
-
-  digitalWrite(LED_OK, HIGH);
-  buzzerOK();
-
-  sendToGoogleSheet(uid, namaAlat, status, keterangan, durasi, durasiDetik);
-
-  delay(1000);
-  digitalWrite(LED_OK, LOW);
-
-  Serial.println("Data selesai dikirim.");
-  Serial.println("====================================");
-
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
-
-  delay(1500);
 }

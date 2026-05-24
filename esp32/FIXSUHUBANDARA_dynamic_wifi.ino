@@ -8,9 +8,11 @@
 #include <time.h>
 
 // ===================== WIFI DINAMIS =====================
-// WiFi default dipakai pertama kali upload, atau fallback kalau WiFi baru gagal.
+// WiFi default dipakai pertama kali upload.
+// Setelah WiFi dari dashboard tersimpan di Preferences, sketch memakai data memori.
 const char* DEFAULT_SSID = "FAZ NET";
 const char* DEFAULT_PASSWORD = "Gantengkalem1";
+const bool ENABLE_DEFAULT_FALLBACK = false; // true kalau ingin coba WiFi default saat WiFi tersimpan gagal.
 
 // Ganti sesuai alat:
 // ESP32-1, ESP32-2, atau ESP32-3
@@ -40,12 +42,13 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);
 DHT dht(DHTPIN, DHTTYPE);
 
 // ===================== INTERVAL KIRIM DATA =====================
+// Data dikirim pertama kali saat alat menyala, lalu setiap 1 jam.
 unsigned long lastSendTime = 0;
-const unsigned long sendInterval = 10000;
+const unsigned long sendInterval = 3600000UL; // 1 jam = 60 menit x 60 detik x 1000 ms
 
-// ===================== WAKTU WIB =====================
+// ===================== WAKTU WITA =====================
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 7 * 3600;
+const long gmtOffset_sec = 8 * 3600; // WITA = UTC+8
 const int daylightOffset_sec = 0;
 
 const char* hariSingkat[] = {
@@ -211,7 +214,7 @@ void connectWiFi() {
       Serial.println();
       Serial.println("Gagal konek WiFi utama.");
 
-      if (activeSsid != String(DEFAULT_SSID)) {
+      if (ENABLE_DEFAULT_FALLBACK && activeSsid != String(DEFAULT_SSID)) {
         Serial.println("Coba fallback ke WiFi default...");
 
         lcd.clear();
@@ -377,7 +380,7 @@ void syncTime() {
 
   if (getLocalTime(&timeinfo)) {
     printLCDLine(2, "Waktu OK");
-    printLCDLine(3, "WIB Aktif");
+    printLCDLine(3, "WITA Aktif");
   } else {
     printLCDLine(2, "Waktu Gagal");
     printLCDLine(3, "Cek Internet");
@@ -470,7 +473,7 @@ void setup() {
   printLCDLine(0, "    Shelter DVOR");
   printLCDLine(1, "System Ready");
   printLCDLine(2, "Monitoring...");
-  printLCDLine(3, "WIB Active");
+  printLCDLine(3, "WITA Active");
   delay(2000);
 }
 
@@ -489,7 +492,7 @@ void loop() {
 
     tampilkanErrorLCD();
 
-    if (millis() - lastSendTime >= sendInterval) {
+    if (lastSendTime == 0 || millis() - lastSendTime >= sendInterval) {
       lastSendTime = millis();
       sendToGoogleSheet(0, 0, "Sensor Error");
     }
@@ -513,7 +516,7 @@ void loop() {
 
     tampilkanDataLCD(temperature, humidity);
 
-    if (millis() - lastSendTime >= sendInterval) {
+    if (lastSendTime == 0 || millis() - lastSendTime >= sendInterval) {
       lastSendTime = millis();
       sendToGoogleSheet(temperature, humidity, keterangan);
     }

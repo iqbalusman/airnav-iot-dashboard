@@ -6,9 +6,11 @@
 #include <Preferences.h>
 
 // ===================== WIFI DINAMIS =====================
-// WiFi default dipakai pertama kali upload, atau fallback kalau WiFi baru gagal.
+// WiFi default dipakai pertama kali upload.
+// Setelah WiFi dari dashboard tersimpan di Preferences, sketch memakai data memori.
 const char* DEFAULT_SSID = "FAZ NET";
 const char* DEFAULT_PASSWORD = "Gantengkalem1";
+const bool ENABLE_DEFAULT_FALLBACK = false; // true kalau ingin coba WiFi default saat WiFi tersimpan gagal.
 
 // Ganti sesuai alat:
 // ESP32-1, ESP32-2, atau ESP32-3
@@ -172,7 +174,7 @@ void connectWiFi() {
       Serial.println();
       Serial.println("Gagal konek WiFi utama.");
 
-      if (activeSsid != String(DEFAULT_SSID)) {
+      if (ENABLE_DEFAULT_FALLBACK && activeSsid != String(DEFAULT_SSID)) {
         Serial.println("Coba fallback ke WiFi default...");
 
         activeSsid = DEFAULT_SSID;

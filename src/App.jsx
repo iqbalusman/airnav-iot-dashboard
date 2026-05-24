@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 
 const LineChartPanel = lazy(() => import('./components/LineChartPanel.jsx'));
+const BarChartPanel = lazy(() => import('./components/BarChartPanel.jsx'));
 
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'admin123';
@@ -48,13 +49,13 @@ const mockTemperature = [
 ];
 
 const mockRfid = [
-  { timestamp: '2026-04-30T07:15:00+07:00', jam: '07:15', uid: 'A1 B2 C3 D4', namaAlat: 'OBENG', status: 'MEMINJAM', keterangan: 'Alat berhasil dipinjam' },
-  { timestamp: '2026-04-30T08:05:00+07:00', jam: '08:05', uid: 'E5 F6 G7 H8', namaAlat: 'MULTIMETER', status: 'MEMINJAM', keterangan: 'Alat berhasil dipinjam' },
-  { timestamp: '2026-04-30T09:10:00+07:00', jam: '09:10', uid: 'I9 J0 K1 L2', namaAlat: 'SOLDER', status: 'MEMINJAM', keterangan: 'Alat berhasil dipinjam' },
-  { timestamp: '2026-04-30T09:42:00+07:00', jam: '09:42', uid: 'XX YY ZZ 00', namaAlat: 'Tidak Terdaftar', status: 'PERINGATAN', keterangan: 'UID tidak terdaftar' },
-  { timestamp: '2026-04-30T10:30:00+07:00', jam: '10:30', uid: 'A1 B2 C3 D4', namaAlat: 'OBENG', status: 'MENGEMBALIKAN', keterangan: 'Alat berhasil dikembalikan' },
-  { timestamp: '2026-04-30T11:22:00+07:00', jam: '11:22', uid: 'M3 N4 O5 P6', namaAlat: 'TESPEN', status: 'MEMINJAM', keterangan: 'Alat berhasil dipinjam' },
-  { timestamp: '2026-04-30T12:15:00+07:00', jam: '12:15', uid: 'E5 F6 G7 H8', namaAlat: 'MULTIMETER', status: 'MENGEMBALIKAN', keterangan: 'Alat berhasil dikembalikan' },
+  { timestamp: '2026-04-30T07:15:00+07:00', jam: '07:15', uid: 'A1 B2 C3 D4', namaAlat: 'OBENG', status: 'DIPINJAM', keterangan: 'Alat berhasil dipinjam', durasi: 'Sedang berjalan' },
+  { timestamp: '2026-04-30T08:05:00+07:00', jam: '08:05', uid: 'E5 F6 G7 H8', namaAlat: 'MULTIMETER', status: 'DIPINJAM', keterangan: 'Alat berhasil dipinjam', durasi: 'Sedang berjalan' },
+  { timestamp: '2026-04-30T09:10:00+07:00', jam: '09:10', uid: 'I9 J0 K1 L2', namaAlat: 'SOLDER', status: 'DIPINJAM', keterangan: 'Alat berhasil dipinjam', durasi: 'Sedang berjalan' },
+  { timestamp: '2026-04-30T09:42:00+07:00', jam: '09:42', uid: 'XX YY ZZ 00', namaAlat: 'Tidak Terdaftar', status: 'PERINGATAN', keterangan: 'UID tidak terdaftar', durasi: '-' },
+  { timestamp: '2026-04-30T10:30:00+07:00', jam: '10:30', uid: 'A1 B2 C3 D4', namaAlat: 'OBENG', status: 'DIKEMBALIKAN', keterangan: 'Alat berhasil dikembalikan', durasi: '3 jam 15 menit 0 detik' },
+  { timestamp: '2026-04-30T11:22:00+07:00', jam: '11:22', uid: 'M3 N4 O5 P6', namaAlat: 'TESPEN', status: 'DIPINJAM', keterangan: 'Alat berhasil dipinjam', durasi: 'Sedang berjalan' },
+  { timestamp: '2026-04-30T12:15:00+07:00', jam: '12:15', uid: 'E5 F6 G7 H8', namaAlat: 'MULTIMETER', status: 'DIKEMBALIKAN', keterangan: 'Alat berhasil dikembalikan', durasi: '4 jam 10 menit 0 detik' },
 ];
 
 /** Contoh struktur kolom log Sheet ATS (Tegangan/Arus/Watt, PLN & Generator = YA/TIDAK, Sumber Aktif, Relay, Keterangan). */
@@ -585,6 +586,11 @@ function normalizeRfid(payload) {
   return normalizeRows(payload).map((row, index) => {
     const timestamp = row.timestamp ?? row.Timestamp ?? new Date().toISOString();
     const rawJam = row.jam ?? row.Jam ?? timestamp;
+    const durasi = row.durasi ?? row.Durasi ?? row['Durasi Peminjaman'] ?? row.durasiPeminjaman ?? row['Lama Peminjaman'] ?? '-';
+    const rawDurasiDetik = row.durasiDetik ?? row['Durasi Detik'] ?? row.durasiSeconds ?? row['Durasi Seconds'];
+    const durasiDetik = Number.isFinite(parseSheetNumber(rawDurasiDetik, NaN))
+      ? parseSheetNumber(rawDurasiDetik, 0)
+      : parseDurationSeconds(durasi);
 
     return {
       id: row.id ?? index,
@@ -594,6 +600,8 @@ function normalizeRfid(payload) {
       namaAlat: row.namaAlat ?? row['Nama Alat'] ?? row.alat ?? row.Alat ?? 'Tidak Terdaftar',
       status: row.status ?? row.Status ?? 'PERINGATAN',
       keterangan: row.keterangan ?? row.Keterangan ?? '-',
+      durasi,
+      durasiDetik,
     };
   });
 }
@@ -607,6 +615,48 @@ function parseSheetNumber(value, fallback = 0) {
     .replace(/[^0-9.+-]/g, '');
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function parseDurationSeconds(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+
+  const text = String(value).trim().toLowerCase();
+  if (!text || text === '-' || text.includes('sedang')) return 0;
+
+  const clockParts = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (clockParts) {
+    const [, hours, minutes, seconds = '0'] = clockParts;
+    return (Number(hours) * 3600) + (Number(minutes) * 60) + Number(seconds);
+  }
+
+  const units = [
+    [/(\d+(?:[.,]\d+)?)\s*(?:hari|day|days)/, 86400],
+    [/(\d+(?:[.,]\d+)?)\s*(?:jam|hour|hours|j)\b/, 3600],
+    [/(\d+(?:[.,]\d+)?)\s*(?:menit|minute|minutes|min|m)\b/, 60],
+    [/(\d+(?:[.,]\d+)?)\s*(?:detik|second|seconds|sec|s)\b/, 1],
+  ];
+
+  const total = units.reduce((sum, [pattern, multiplier]) => {
+    const match = text.match(pattern);
+    if (!match) return sum;
+    return sum + (Number(match[1].replace(',', '.')) * multiplier);
+  }, 0);
+
+  return Number.isFinite(total) ? Math.round(total) : 0;
+}
+
+function formatDurationShort(totalSeconds) {
+  const seconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (seconds <= 0) return '-';
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+
+  if (hours > 0 && minutes > 0) return `${hours}j ${minutes}m`;
+  if (hours > 0) return `${hours}j`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${seconds}dtk`;
 }
 
 /** Sel kosong Sheet "PLN" / "Generator" bisa berisi tegangan (angka) atau teks YA/TIDAK. */
@@ -985,10 +1035,50 @@ function statusTone(status) {
   if (value.includes('rejected') || value.includes('ditolak')) return 'red';
   if (value.includes('panas') || value.includes('peringatan') || value.includes('error') || value.includes('semua') || value.includes('mati') || value.includes('kritis')) return 'red';
   if (value.includes('dingin')) return 'blue';
-  if (value.includes('meminjam')) return 'orange';
+  if (value.includes('meminjam') || value.includes('dipinjam')) return 'orange';
   if (value.includes('backup') || value.includes('generator') || value.includes('perhatian') || value.includes('belum')) return 'yellow';
-  if (value.includes('mengembalikan') || value.includes('normal') || value.includes('aktif') || value.includes('pln') || value.includes('stabil')) return 'green';
+  if (value.includes('mengembalikan') || value.includes('dikembalikan') || value.includes('normal') || value.includes('aktif') || value.includes('pln') || value.includes('stabil')) return 'green';
   return 'slate';
+}
+
+function isBorrowedStatus(status) {
+  const value = String(status || '').trim().toUpperCase();
+  return value === 'DIPINJAM' || value === 'MEMINJAM';
+}
+
+function isReturnedStatus(status) {
+  const value = String(status || '').trim().toUpperCase();
+  return value === 'DIKEMBALIKAN' || value === 'MENGEMBALIKAN';
+}
+
+function buildToolDurationRows(rows) {
+  const grouped = rows.reduce((result, row) => {
+    const toolName = String(row.namaAlat || 'Tidak Diketahui').trim() || 'Tidak Diketahui';
+    const durationSeconds = Number(row.durasiDetik || 0);
+    if (durationSeconds <= 0) return result;
+
+    if (!result[toolName]) {
+      result[toolName] = {
+        namaAlat: toolName,
+        totalDetik: 0,
+        jumlahTransaksi: 0,
+        maxDetik: 0,
+      };
+    }
+
+    result[toolName].totalDetik += durationSeconds;
+    result[toolName].jumlahTransaksi += 1;
+    result[toolName].maxDetik = Math.max(result[toolName].maxDetik, durationSeconds);
+    return result;
+  }, {});
+
+  return Object.values(grouped)
+    .map((item) => ({
+      ...item,
+      rataRataMenit: Math.round((item.totalDetik / item.jumlahTransaksi / 60) * 10) / 10,
+      durasiTerlamaMenit: Math.round((item.maxDetik / 60) * 10) / 10,
+    }))
+    .sort((a, b) => b.rataRataMenit - a.rataRataMenit);
 }
 
 function Badge({ children, tone = 'slate' }) {
@@ -1009,7 +1099,62 @@ function Card({ children, className = '' }) {
   return <div className={classNames('rounded-3xl border border-slate-200 bg-white p-5 shadow-sm', className)}>{children}</div>;
 }
 
-function StatCard({ title, value, suffix, icon, status, tone = 'cyan', helper }) {
+function TemperatureStatusEffect({ type }) {
+  if (!type) return null;
+
+  const isHot = type === 'hot';
+  const items = isHot
+    ? [
+      ['left-[18%]', 'bottom-2', 'text-3xl', '0s', '3.2s'],
+      ['left-[42%]', 'bottom-1', 'text-4xl', '.7s', '3.8s'],
+      ['right-[20%]', 'bottom-3', 'text-3xl', '1.4s', '3.4s'],
+    ]
+    : [
+      ['left-[16%]', 'top-4', 'text-2xl', '0s', '4.6s'],
+      ['left-[48%]', 'top-2', 'text-xl', '1s', '5.2s'],
+      ['right-[18%]', 'top-5', 'text-2xl', '2s', '4.8s'],
+      ['right-[42%]', 'top-8', 'text-lg', '1.6s', '5.6s'],
+    ];
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <style>{`
+        @keyframes statFireRise {
+          0% { transform: translateY(34px) scale(.74) rotate(-5deg); opacity: 0; filter: blur(.2px); }
+          18% { opacity: .92; }
+          70% { opacity: .72; }
+          100% { transform: translateY(-86px) scale(1.18) rotate(7deg); opacity: 0; filter: blur(1.2px); }
+        }
+        @keyframes statSnowFall {
+          0% { transform: translate3d(0, -22px, 0) rotate(0deg); opacity: 0; }
+          15% { opacity: .88; }
+          100% { transform: translate3d(12px, 132px, 0) rotate(220deg); opacity: 0; }
+        }
+      `}</style>
+      <div className={classNames('absolute inset-0', isHot ? 'bg-gradient-to-br from-orange-500/10 via-transparent to-rose-500/10' : 'bg-gradient-to-br from-sky-400/10 via-transparent to-cyan-200/10')} />
+      {items.map(([x, y, size, delay, duration], index) => (
+        <span
+          key={`${type}-${index}`}
+          className={classNames('absolute select-none drop-shadow-lg', x, y, size)}
+          style={{
+            animation: `${isHot ? 'statFireRise' : 'statSnowFall'} ${duration} ease-in-out ${delay} infinite`,
+          }}
+        >
+          {isHot ? '🔥' : '❄'}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function getTemperatureVisual(status) {
+  const value = String(status || '').toLowerCase();
+  if (value.includes('panas')) return { effect: 'hot', icon: '🔥', tone: 'red' };
+  if (value.includes('dingin')) return { effect: 'cold', icon: '❄️', tone: 'blue' };
+  return { effect: '', icon: '✅', tone: 'green' };
+}
+
+function StatCard({ title, value, suffix, icon, status, tone = 'cyan', helper, effect }) {
   const gradients = {
     cyan: 'from-cyan-500 to-blue-600',
     blue: 'from-blue-500 to-indigo-600',
@@ -1020,6 +1165,7 @@ function StatCard({ title, value, suffix, icon, status, tone = 'cyan', helper })
   };
   return (
     <Card className="relative overflow-hidden">
+      <TemperatureStatusEffect type={effect} />
       <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-cyan-100/70" />
       <div className="relative flex items-start justify-between gap-4">
         <div>
@@ -1089,6 +1235,14 @@ function LazyLineChart(props) {
   return (
     <Suspense fallback={<div className="grid h-full w-full place-items-center rounded-2xl bg-slate-100 text-sm font-black text-slate-500">Memuat grafik...</div>}>
       <LineChartPanel {...props} />
+    </Suspense>
+  );
+}
+
+function LazyBarChart(props) {
+  return (
+    <Suspense fallback={<div className="grid h-full w-full place-items-center rounded-2xl bg-slate-100 text-sm font-black text-slate-500">Memuat grafik...</div>}>
+      <BarChartPanel {...props} />
     </Suspense>
   );
 }
@@ -1433,8 +1587,8 @@ function DashboardPage({ temperature, rfid, ats, onNavigate }) {
   const latestAts = ats.at(-1) || {};
   const todayTransactions = rfid.filter((item) => item.status !== 'PERINGATAN').length;
   const warningCount = rfid.filter((item) => item.status === 'PERINGATAN' || item.namaAlat === 'Tidak Terdaftar').length;
-  const borrowedCount = rfid.filter((row) => row.status === 'MEMINJAM').length;
-  const returnedCount = rfid.filter((row) => row.status === 'MENGEMBALIKAN').length;
+  const borrowedCount = rfid.filter((row) => isBorrowedStatus(row.status)).length;
+  const returnedCount = rfid.filter((row) => isReturnedStatus(row.status)).length;
   const activeSystems = [temperature.length, rfid.length, ats.length].filter(Boolean).length;
   const isBackupActive = latestAts.sumberAktif === 'Generator' || latestAts.keterangan === 'Backup Genset';
   const isPowerDown = latestAts.keterangan === 'Semua sumber mati'
@@ -1517,6 +1671,7 @@ function TemperaturePage({ data }) {
   const latest = getLatestDataRow(data);
   const tableRows = [...data].sort((a, b) => timeScore(b) - timeScore(a));
   const avgTemp = data.length ? (data.reduce((sum, row) => sum + Number(row.suhu || 0), 0) / data.length).toFixed(1) : '-';
+  const temperatureVisual = getTemperatureVisual(latest.keterangan);
   const exportColumns = [
     { key: 'tanggal', label: 'Tanggal' },
     { key: 'jam', label: 'Jam' },
@@ -1538,19 +1693,34 @@ function TemperaturePage({ data }) {
     { key: 'kelembaban', label: 'Kelembaban', render: (row) => <span>{row.kelembaban}%</span> },
     { key: 'keterangan', label: 'Keterangan', render: (row) => <Badge tone={statusTone(row.keterangan)}>{row.keterangan}</Badge> },
   ];
-  return <div><PageHeader title="Monitoring Suhu" description="Pantau suhu dan kelembaban ruang secara real-time dari sensor DHT11."><DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-suhu-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} /></PageHeader><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Suhu Terkini" value={latest.suhu ?? '-'} suffix="°C" status={latest.keterangan} icon="🌡️" /><StatCard title="Kelembaban" value={latest.kelembaban ?? '-'} suffix="%" icon="💧" tone="blue" /><StatCard title="Rata-rata Suhu" value={avgTemp} suffix="°C" icon="📊" tone="purple" /><StatCard title="Status" value={latest.keterangan || '-'} icon="✅" tone="green" /></div><div className="mt-6"><ChartCard title="Grafik Suhu dan Kelembaban" description="Riwayat pembacaan sensor per jam."><LazyLineChart data={data.slice(-120)} lines={[{ dataKey: 'suhu', name: 'Suhu °C', stroke: '#0891b2', dot: false }, { dataKey: 'kelembaban', name: 'Kelembaban %', stroke: '#2563eb', dot: false }]} /></ChartCard></div><div className="mt-6"><DataTable columns={columns} rows={tableRows} emptyMessage="Belum ada data suhu." /></div></div>;
+  return <div><PageHeader title="Monitoring Suhu" description="Pantau suhu dan kelembaban ruang secara real-time dari sensor DHT11."><DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-suhu-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} /></PageHeader><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Suhu Terkini" value={latest.suhu ?? '-'} suffix="°C" status={latest.keterangan} icon="🌡️" /><StatCard title="Kelembaban" value={latest.kelembaban ?? '-'} suffix="%" icon="💧" tone="blue" /><StatCard title="Rata-rata Suhu" value={avgTemp} suffix="°C" icon="📊" tone="purple" /><StatCard title="Status" value={latest.keterangan || '-'} icon={temperatureVisual.icon} tone={temperatureVisual.tone} effect={temperatureVisual.effect} /></div><div className="mt-6"><ChartCard title="Grafik Suhu dan Kelembaban" description="Riwayat pembacaan sensor per jam."><LazyLineChart data={data.slice(-120)} lines={[{ dataKey: 'suhu', name: 'Suhu °C', stroke: '#0891b2', dot: false }, { dataKey: 'kelembaban', name: 'Kelembaban %', stroke: '#2563eb', dot: false }]} /></ChartCard></div><div className="mt-6"><DataTable columns={columns} rows={tableRows} emptyMessage="Belum ada data suhu." /></div></div>;
 }
 
 function RfidPage({ data }) {
-  const borrowed = data.filter((row) => row.status === 'MEMINJAM').length;
-  const returned = data.filter((row) => row.status === 'MENGEMBALIKAN').length;
+  const borrowed = data.filter((row) => isBorrowedStatus(row.status)).length;
+  const returned = data.filter((row) => isReturnedStatus(row.status)).length;
   const warnings = data.filter((row) => row.status === 'PERINGATAN' || row.namaAlat === 'Tidak Terdaftar').length;
+  const durationRows = data
+    .filter((row) => Number(row.durasiDetik) > 0)
+    .map((row) => ({
+      ...row,
+      durasiMenit: Math.round((Number(row.durasiDetik) / 60) * 10) / 10,
+    }));
+  const toolDurationRows = buildToolDurationRows(durationRows);
+  const averageDurationSeconds = durationRows.length
+    ? durationRows.reduce((sum, row) => sum + Number(row.durasiDetik || 0), 0) / durationRows.length
+    : 0;
+  const maxDurationSeconds = durationRows.length
+    ? Math.max(...durationRows.map((row) => Number(row.durasiDetik || 0)))
+    : 0;
+  const latestDurationSeconds = durationRows.at(-1)?.durasiDetik || 0;
   const exportColumns = [
     { key: 'tanggal', label: 'Tanggal' },
     { key: 'jam', label: 'Jam' },
     { key: 'uid', label: 'UID Kartu' },
     { key: 'namaAlat', label: 'Nama Alat' },
     { key: 'status', label: 'Status' },
+    { key: 'durasi', label: 'Durasi Peminjaman' },
     { key: 'keterangan', label: 'Keterangan' },
   ];
   const exportRows = [...data].reverse().map((row) => ({
@@ -1559,6 +1729,7 @@ function RfidPage({ data }) {
     uid: row.uid,
     namaAlat: row.namaAlat,
     status: row.status,
+    durasi: row.durasi,
     keterangan: row.keterangan,
   }));
   const columns = [
@@ -1566,9 +1737,43 @@ function RfidPage({ data }) {
     { key: 'uid', label: 'UID Kartu', render: (row) => <span className="font-mono text-xs font-bold text-slate-700">{row.uid}</span> },
     { key: 'namaAlat', label: 'Nama Alat', render: (row) => <span className="font-bold text-slate-950">{row.namaAlat}</span> },
     { key: 'status', label: 'Status', render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> },
+    { key: 'durasi', label: 'Durasi Peminjaman' },
     { key: 'keterangan', label: 'Keterangan' },
   ];
-  return <div><PageHeader title="RFID Alat" description="Monitoring peminjaman dan pengembalian alat berbasis kartu RFID."><DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-rfid-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} /></PageHeader><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Total Scan" value={data.length} icon="🏷️" /><StatCard title="Dipinjam" value={borrowed} icon="📤" tone="orange" /><StatCard title="Dikembalikan" value={returned} icon="✅" tone="green" /><StatCard title="Peringatan UID" value={warnings} icon="⚠️" tone={warnings ? 'red' : 'green'} /></div><div className="mt-6 rounded-2xl border border-cyan-100 bg-gradient-to-r from-cyan-50 to-blue-50 p-5"><h3 className="font-black text-slate-950">Alur Sistem RFID</h3><p className="mt-2 text-sm leading-6 text-slate-600">Scan kartu untuk validasi UID. Sistem mencatat status MEMINJAM, MENGEMBALIKAN, atau PERINGATAN jika UID tidak terdaftar.</p></div><div className="mt-6"><DataTable columns={columns} rows={[...data].reverse()} emptyMessage="Belum ada data RFID." /></div></div>;
+  return (
+    <div>
+      <PageHeader title="RFID Alat" description="Monitoring peminjaman dan pengembalian alat berbasis kartu RFID.">
+        <DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-rfid-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} />
+      </PageHeader>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard title="Total Scan" value={data.length} icon="🏷️" />
+        <StatCard title="Dipinjam" value={borrowed} icon="📤" tone="orange" />
+        <StatCard title="Dikembalikan" value={returned} icon="✅" tone="green" />
+        <StatCard title="Peringatan UID" value={warnings} icon="⚠️" tone={warnings ? 'red' : 'green'} />
+        <StatCard title="Durasi Peminjaman" value={formatDurationShort(averageDurationSeconds)} icon="⏱️" tone="purple" helper={`Terakhir ${formatDurationShort(latestDurationSeconds)} • Maks ${formatDurationShort(maxDurationSeconds)}`} />
+      </div>
+      <div className="mt-6 rounded-2xl border border-cyan-100 bg-gradient-to-r from-cyan-50 to-blue-50 p-5">
+        <h3 className="font-black text-slate-950">Alur Sistem RFID</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Scan kartu untuk validasi UID. Sistem mencatat status DIPINJAM, DIKEMBALIKAN, durasi peminjaman, atau PERINGATAN jika UID tidak terdaftar.</p>
+      </div>
+      <div className="mt-6">
+        <ChartCard title="Grafik Durasi Peminjaman per Alat" description="Rata-rata dan durasi terlama tiap alat dalam menit.">
+          <LazyBarChart
+            data={toolDurationRows}
+            margin={{ top: 10, right: 20, left: 8, bottom: 0 }}
+            yLabel="Menit"
+            bars={[
+              { dataKey: 'rataRataMenit', name: 'Rata-rata menit', fill: '#7c3aed' },
+              { dataKey: 'durasiTerlamaMenit', name: 'Terlama menit', fill: '#06b6d4' },
+            ]}
+          />
+        </ChartCard>
+      </div>
+      <div className="mt-6">
+        <DataTable columns={columns} rows={[...data].reverse()} emptyMessage="Belum ada data RFID." />
+      </div>
+    </div>
+  );
 }
 
 function formatAtsReading(value, unit) {
@@ -1962,7 +2167,7 @@ function doPost(e) {
         </Card>
       </div>
       <Card className="mt-6 bg-slate-950 text-white"><h2 className="text-lg font-black">Contoh Apps Script</h2><p className="mt-1 text-sm text-slate-300">Deploy sebagai Web App, akses Anyone, lalu tempel URL ke form di atas.</p><pre className="mt-4 overflow-x-auto rounded-2xl bg-black/40 p-4 text-xs leading-6 text-cyan-50"><code>{appScript}</code></pre></Card>
-      <Card className="mt-6 bg-slate-950 text-white"><h2 className="text-lg font-black">Contoh Apps Script WiFi ESP32</h2><p className="mt-1 text-sm text-slate-300">Pakai script ini untuk API WiFi ESP32. URL deploy yang sama juga harus diisi ke konstanta WIFI_CONFIG_API di sketch ESP32.</p><pre className="mt-4 overflow-x-auto rounded-2xl bg-black/40 p-4 text-xs leading-6 text-cyan-50"><code>{wifiAppScript}</code></pre></Card>
+      <Card className="mt-6 bg-slate-950 text-white"><h2 className="text-lg font-black">Contoh Apps Script WiFi ESP32</h2><p className="mt-1 text-sm text-slate-300">Pakai script ini untuk API WiFi ESP32. URL deploy yang sama juga harus diisi ke konstanta WIFI_CONFIG_API di sketch ESP32. Password di file Arduino tidak ikut tertulis ulang; ESP32 menyimpan password baru ke memori internal setelah berhasil membaca API.</p><pre className="mt-4 overflow-x-auto rounded-2xl bg-black/40 p-4 text-xs leading-6 text-cyan-50"><code>{wifiAppScript}</code></pre></Card>
       <Card className="mt-6 bg-slate-950 text-white">
         <h2 className="text-lg font-black">Ubah Username & Password WiFi ESP32</h2>
         <p className="mt-1 text-sm text-slate-300">Atur username/SSID jaringan dan password WiFi per mikrokontroler. Setiap ESP32 membaca konfigurasi sesuai nama perangkatnya dari API.</p>
@@ -2333,7 +2538,7 @@ export default function IoTDashboardApp() {
   
     const intervalId = window.setInterval(() => {
       refreshData({ silent: true });
-    }, 3000);
+    }, 1000);
   
     return () => {
       window.clearInterval(intervalId);
@@ -2674,7 +2879,7 @@ export default function IoTDashboardApp() {
         saveJson(DEVICE_WIFI_SAVED_KEY, nextConfig);
         return nextConfig;
       });
-      setDeviceWifiSuccess(result.message || `Konfigurasi WiFi ${device} sudah dikirim. Jika perangkat belum berubah, buka Serial Monitor dan pastikan WIFI_CONFIG_API di sketch sama dengan API WiFi ESP32.`);
+      setDeviceWifiSuccess(result.message || `Konfigurasi WiFi ${device} sudah dikirim. File Arduino memang tidak berubah otomatis; ESP32 akan menyimpan password baru ke memori setelah online dan membaca API WiFi ESP32.`);
     } catch (error) {
       console.error('Gagal menyimpan WiFi ESP32.', error);
       setDeviceWifiError(error.message || 'Gagal menyimpan WiFi ESP32. Pastikan API WiFi ESP32 aktif.');
