@@ -16,6 +16,15 @@ const JAKARTA_TZ = 'Asia/Makassar';
 const SHEET_TIME_TO_WITA_OFFSET_HOURS = 0;
 const DEFAULT_USER_MANAGEMENT_API = 'https://script.google.com/macros/s/AKfycbx2t74IMPV1VWD76PA-UlWJkydOYftZ5-2QEa1jkV1wysH3A8UuTa2co7YfkqtU4gPaNw/exec';
 const DEVICE_WIFI_OPTIONS = ['ESP32-1', 'ESP32-2', 'ESP32-3'];
+const RFID_TOOL_ITEMS = [
+  { uid: 'BD27B889', namaAlat: 'OBENG SET' },
+  { uid: '40616A61', namaAlat: 'LAN TESTER' },
+  { uid: 'D065DF5F', namaAlat: 'MULTIMETER' },
+  { uid: '30D85561', namaAlat: 'SOLDER UAP' },
+  { uid: 'D019CD5F', namaAlat: 'WATT METER' },
+  { uid: '00BA9E60', namaAlat: 'BOR PORTABEL' },
+  { uid: 'FB7F8005', namaAlat: 'OSCILLOSCOPE' },
+];
 
 const DEFAULT_API_CONFIG = {
   mode: 'dummy',
@@ -1081,6 +1090,33 @@ function buildToolDurationRows(rows) {
     .sort((a, b) => b.rataRataMenit - a.rataRataMenit);
 }
 
+function buildLatestRfidToolStatus(rows) {
+  const latestByUid = rows
+    .filter((row) => row.status !== 'PERINGATAN' && row.namaAlat !== 'Tidak Terdaftar')
+    .reduce((result, row, index) => {
+      const uid = String(row.uid || '').trim().toUpperCase();
+      if (!uid) return result;
+
+      const previous = result[uid];
+      if (!previous || timeScore(row, index) >= timeScore(previous.row, previous.index)) {
+        result[uid] = { row, index };
+      }
+
+      return result;
+    }, {});
+
+  return RFID_TOOL_ITEMS.map((tool) => {
+    const latest = latestByUid[tool.uid]?.row;
+
+    return {
+      uid: tool.uid,
+      namaAlat: latest?.namaAlat || tool.namaAlat,
+      status: latest?.status || 'BELUM ADA DATA',
+      jam: latest?.jam || '--:--:--',
+    };
+  });
+}
+
 function Badge({ children, tone = 'slate' }) {
   const tones = {
     cyan: 'border-cyan-200 bg-cyan-50 text-cyan-700',
@@ -1599,6 +1635,7 @@ function DashboardPage({ temperature, rfid, ats, onNavigate }) {
   const maxTemp = temperature.length ? Math.max(...temperature.map((row) => Number(row.suhu || 0))).toFixed(1) : '-';
   const riskLabel = isPowerDown ? 'Kritis' : warningCount > 0 || isBackupActive ? 'Perlu Perhatian' : 'Stabil';
   const riskTone = isPowerDown ? 'red' : warningCount > 0 || isBackupActive ? 'yellow' : 'green';
+  const rfidToolStatuses = buildLatestRfidToolStatus(rfid);
 
   return (
     <div>
@@ -1656,7 +1693,7 @@ function DashboardPage({ temperature, rfid, ats, onNavigate }) {
             ]}
           />
         </ChartCard>
-        <Card className="min-h-[360px]"><div className="mb-5 flex items-center justify-between gap-4"><div><h3 className="text-lg font-black text-slate-950">Aktivitas RFID Terbaru</h3><p className="text-sm text-slate-500">Riwayat scan terakhir dari sistem alat.</p></div><Badge tone={warningCount > 0 ? 'red' : 'green'}>{warningCount > 0 ? 'Ada Peringatan' : 'Aman'}</Badge></div><div className="space-y-3">{[...rfid].reverse().slice(0, 5).map((item, index) => <div key={`${item.uid}-${item.jam}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-950">{item.namaAlat}</p><p className="truncate text-xs text-slate-500">{item.uid} • {item.jam} WITA</p></div><Badge tone={statusTone(item.status)}>{item.status}</Badge></div>)}</div></Card>
+        <Card className="min-h-[360px]"><div className="mb-5 flex items-center justify-between gap-4"><div><h3 className="text-lg font-black text-slate-950">Status RFID Alat</h3><p className="text-sm text-slate-500">Status terakhir tiap alat, diperbarui dari scan terbaru.</p></div><Badge tone={warningCount > 0 ? 'red' : 'green'}>{warningCount > 0 ? 'Ada Peringatan' : 'Aman'}</Badge></div><div className="max-h-[480px] space-y-3 overflow-y-auto pr-1">{rfidToolStatuses.map((item) => <div key={item.uid} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-950">{item.namaAlat}</p><p className="truncate text-xs text-slate-500">{item.uid} • {item.jam} WITA</p></div><Badge tone={statusTone(item.status)}>{item.status}</Badge></div>)}</div></Card>
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-3">
