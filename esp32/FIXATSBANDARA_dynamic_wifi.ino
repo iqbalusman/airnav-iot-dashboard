@@ -43,6 +43,7 @@ const bool RELAY_ACTIVE_LOW = true;
 
 const float V_ON_THRESHOLD  = 180.0;
 const float V_OFF_THRESHOLD = 150.0;
+const unsigned long ATS_SEND_INTERVAL = 60000;
 
 HardwareSerial SerialPLN(1);
 HardwareSerial SerialGEN(2);
@@ -504,7 +505,7 @@ void loop() {
 
   static unsigned long lastSend = 0;
 
-  if (millis() - lastSend > 10000) {
+  if (millis() - lastSend > ATS_SEND_INTERVAL) {
     lastSend = millis();
 
     sendToGoogleSheet(

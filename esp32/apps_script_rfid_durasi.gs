@@ -82,7 +82,7 @@ function doGet(e) {
       return cekStatusTerakhir(e);
     }
 
-    return ambilSemuaData();
+    return ambilSemuaData(e);
 
   } catch (error) {
     Logger.log('ERROR doGet: ' + error);
@@ -207,9 +207,14 @@ function cekStatusTerakhir(e) {
   });
 }
 
-function ambilSemuaData() {
+function ambilSemuaData(e) {
   var sheet = SpreadsheetApp.openById(SHEET_ID).getActiveSheet();
   ensureHeaders(sheet);
+  var limit = 0;
+
+  if (e && e.parameter && e.parameter.limit) {
+    limit = Math.max(0, Number(e.parameter.limit) || 0);
+  }
 
   if (sheet.getLastRow() === 0) {
     return jsonResponse({
@@ -235,7 +240,18 @@ function ambilSemuaData() {
     return String(header).trim();
   });
 
-  var data = values.slice(1)
+  var bodyRows = values.slice(1);
+  var totalRows = bodyRows.filter(function(row) {
+    return row.some(function(cell) {
+      return cell !== '';
+    });
+  }).length;
+
+  if (limit > 0) {
+    bodyRows = bodyRows.slice(-limit);
+  }
+
+  var data = bodyRows
     .filter(function(row) {
       return row.some(function(cell) {
         return cell !== '';
@@ -254,7 +270,9 @@ function ambilSemuaData() {
   return jsonResponse({
     success: true,
     system: 'rfid',
-    total: data.length,
+    total: totalRows,
+    returned: data.length,
+    limit: limit,
     data: data
   });
 }

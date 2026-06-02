@@ -14,6 +14,8 @@ const SESSION_LOGIN_PANEL_KEY = 'iot-dashboard-session-login-panel-v1';
 const SESSION_AUTH_MODE_KEY = 'iot-dashboard-session-auth-mode-v1';
 const JAKARTA_TZ = 'Asia/Makassar';
 const SHEET_TIME_TO_WITA_OFFSET_HOURS = 0;
+const DATA_FETCH_LIMIT = 200;
+const TABLE_DISPLAY_LIMIT = 300;
 const DEFAULT_USER_MANAGEMENT_API = 'https://script.google.com/macros/s/AKfycbx2t74IMPV1VWD76PA-UlWJkydOYftZ5-2QEa1jkV1wysH3A8UuTa2co7YfkqtU4gPaNw/exec';
 const DEVICE_WIFI_OPTIONS = ['ESP32-1', 'ESP32-2', 'ESP32-3'];
 const RFID_TOOL_ITEMS = [
@@ -110,6 +112,80 @@ function downloadCsv(filename, columns, rows) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+const temperatureExportColumns = [
+  { key: 'tanggal', label: 'Tanggal' },
+  { key: 'jam', label: 'Jam' },
+  { key: 'suhu', label: 'Suhu (C)' },
+  { key: 'kelembaban', label: 'Kelembaban (%)' },
+  { key: 'keterangan', label: 'Keterangan' },
+];
+
+const rfidExportColumns = [
+  { key: 'tanggal', label: 'Tanggal' },
+  { key: 'jam', label: 'Jam' },
+  { key: 'uid', label: 'UID Kartu' },
+  { key: 'namaAlat', label: 'Nama Alat' },
+  { key: 'status', label: 'Status' },
+  { key: 'durasi', label: 'Durasi Peminjaman' },
+  { key: 'keterangan', label: 'Keterangan' },
+];
+
+const atsExportColumns = [
+  { key: 'tanggal', label: 'Tanggal' },
+  { key: 'jam', label: 'Jam' },
+  { key: 'teganganPln', label: 'Tegangan PLN (V)' },
+  { key: 'arusPln', label: 'Arus PLN (A)' },
+  { key: 'wattPln', label: 'Watt PLN (W)' },
+  { key: 'teganganGenerator', label: 'Tegangan Generator (V)' },
+  { key: 'arusGenerator', label: 'Arus Generator (A)' },
+  { key: 'wattGenerator', label: 'Watt Generator (W)' },
+  { key: 'statusPln', label: 'Status PLN' },
+  { key: 'statusGenerator', label: 'Status Generator' },
+  { key: 'sumberAktif', label: 'Sumber Aktif' },
+  { key: 'statusRelay', label: 'Relay' },
+  { key: 'keterangan', label: 'Keterangan' },
+];
+
+function toTemperatureExportRows(rows) {
+  return [...rows].sort((a, b) => timeScore(b) - timeScore(a)).map((row) => ({
+    tanggal: formatJakartaDate(row.timestamp),
+    jam: row.jam,
+    suhu: row.suhu,
+    kelembaban: row.kelembaban,
+    keterangan: row.keterangan,
+  }));
+}
+
+function toRfidExportRows(rows) {
+  return [...rows].reverse().map((row) => ({
+    tanggal: formatJakartaDate(row.timestamp),
+    jam: row.jam,
+    uid: row.uid,
+    namaAlat: row.namaAlat,
+    status: row.status,
+    durasi: row.durasi,
+    keterangan: row.keterangan,
+  }));
+}
+
+function toAtsExportRows(rows) {
+  return [...rows].reverse().map((row) => ({
+    tanggal: formatJakartaDate(row.timestamp),
+    jam: row.jam,
+    teganganPln: row.teganganPln,
+    arusPln: row.arusPln,
+    wattPln: row.wattPln,
+    teganganGenerator: row.teganganGenerator,
+    arusGenerator: row.arusGenerator,
+    wattGenerator: row.wattGenerator,
+    statusPln: row.statusPln,
+    statusGenerator: row.statusGenerator,
+    sumberAktif: row.sumberAktif,
+    statusRelay: row.statusRelay,
+    keterangan: row.keterangan,
+  }));
 }
 
 function DownloadButton({ onClick, disabled = false }) {
@@ -456,6 +532,18 @@ function normalizeRows(payload) {
   return [];
 }
 
+function limitSheetPayload(payload, limit = DATA_FETCH_LIMIT) {
+  const safeLimit = Number(limit);
+  if (!Number.isFinite(safeLimit) || safeLimit <= 0) return payload;
+  const limitRows = (rows) => rows.slice(-safeLimit);
+
+  if (Array.isArray(payload)) return limitRows(payload);
+  if (Array.isArray(payload?.data)) return { ...payload, data: limitRows(payload.data) };
+  if (Array.isArray(payload?.rows)) return { ...payload, rows: limitRows(payload.rows) };
+  if (Array.isArray(payload?.result)) return { ...payload, result: limitRows(payload.result) };
+  return payload;
+}
+
 function getRowValue(row, keys) {
   if (!row || typeof row !== 'object') return undefined;
   for (const key of keys) {
@@ -743,16 +831,16 @@ function normalizeAts(payload) {
 }
 
 
-async function fetchSheetJson(url) {
+async function fetchSheetJson(url, params = {}) {
   const cleanUrl = String(url || '').trim();
 
   if (!cleanUrl) {
     return { data: [], skipped: true, reason: 'URL API belum diisi' };
   }
 
-  const finalUrl = cleanUrl.includes('?')
-    ? `${cleanUrl}&_=${Date.now()}`
-    : `${cleanUrl}?_=${Date.now()}`;
+  const query = new URLSearchParams({ ...params, _: String(Date.now()) });
+  const separator = cleanUrl.includes('?') ? '&' : '?';
+  const finalUrl = `${cleanUrl}${separator}${query.toString()}`;
 
   const response = await fetch(finalUrl, {
     method: 'GET',
@@ -1266,6 +1354,7 @@ function PageHeader({ title, description, children }) {
 
 function DataTable({ columns, rows, emptyMessage, tableClassName = 'min-w-[760px]' }) {
   const safeRows = Array.isArray(rows) ? rows : [];
+  const visibleRows = safeRows.slice(0, TABLE_DISPLAY_LIMIT);
   return (
     <Card className="overflow-hidden p-0">
       <div className="overflow-x-auto">
@@ -1276,7 +1365,7 @@ function DataTable({ columns, rows, emptyMessage, tableClassName = 'min-w-[760px
           <tbody className="divide-y divide-slate-100">
             {safeRows.length === 0 ? (
               <tr><td colSpan={columns.length} className="px-5 py-8 text-center text-slate-500">{emptyMessage}</td></tr>
-            ) : safeRows.map((row, index) => (
+            ) : visibleRows.map((row, index) => (
               <tr key={row.id ?? `${row.timestamp}-${index}`} className="hover:bg-slate-50/80">
                 {columns.map((column) => <td key={column.key} className="px-5 py-4 align-middle text-slate-700">{column.render ? column.render(row) : row[column.key]}</td>)}
               </tr>
@@ -1284,6 +1373,11 @@ function DataTable({ columns, rows, emptyMessage, tableClassName = 'min-w-[760px
           </tbody>
         </table>
       </div>
+      {safeRows.length > visibleRows.length && (
+        <div className="border-t border-slate-100 px-5 py-3 text-xs font-bold text-slate-500">
+          Menampilkan {visibleRows.length} data terbaru dari {safeRows.length} data yang dimuat. Gunakan Download Data untuk mengambil seluruh riwayat dari API.
+        </div>
+      )}
     </Card>
   );
 }
@@ -1737,25 +1831,11 @@ function DashboardPage({ temperature, rfid, ats, onNavigate }) {
   );
 }
 
-function TemperaturePage({ data }) {
+function TemperaturePage({ data, onDownload }) {
   const latest = getLatestDataRow(data);
   const tableRows = [...data].sort((a, b) => timeScore(b) - timeScore(a));
   const avgTemp = data.length ? (data.reduce((sum, row) => sum + Number(row.suhu || 0), 0) / data.length).toFixed(1) : '-';
   const temperatureVisual = getTemperatureVisual(latest.keterangan);
-  const exportColumns = [
-    { key: 'tanggal', label: 'Tanggal' },
-    { key: 'jam', label: 'Jam' },
-    { key: 'suhu', label: 'Suhu (C)' },
-    { key: 'kelembaban', label: 'Kelembaban (%)' },
-    { key: 'keterangan', label: 'Keterangan' },
-  ];
-  const exportRows = tableRows.map((row) => ({
-    tanggal: formatJakartaDate(row.timestamp),
-    jam: row.jam,
-    suhu: row.suhu,
-    kelembaban: row.kelembaban,
-    keterangan: row.keterangan,
-  }));
   const columns = [
     { key: 'timestamp', label: 'Tanggal', render: (row) => <span>{formatJakartaDate(row.timestamp)}</span> },
     { key: 'jam', label: 'Jam' },
@@ -1763,10 +1843,10 @@ function TemperaturePage({ data }) {
     { key: 'kelembaban', label: 'Kelembaban', render: (row) => <span>{row.kelembaban}%</span> },
     { key: 'keterangan', label: 'Keterangan', render: (row) => <Badge tone={statusTone(row.keterangan)}>{row.keterangan}</Badge> },
   ];
-  return <div><PageHeader title="Monitoring Suhu" description="Pantau suhu dan kelembaban ruang secara real-time dari sensor DHT11."><DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-suhu-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} /></PageHeader><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Suhu Terkini" value={latest.suhu ?? '-'} suffix="°C" status={latest.keterangan} icon="🌡️" /><StatCard title="Kelembaban" value={latest.kelembaban ?? '-'} suffix="%" icon="💧" tone="blue" /><StatCard title="Rata-rata Suhu" value={avgTemp} suffix="°C" icon="📊" tone="purple" /><StatCard title="Status" value={latest.keterangan || '-'} icon={temperatureVisual.icon} tone={temperatureVisual.tone} effect={temperatureVisual.effect} /></div><div className="mt-6"><ChartCard title="Grafik Suhu dan Kelembaban" description="Riwayat pembacaan sensor per jam."><LazyLineChart data={data.slice(-120)} lines={[{ dataKey: 'suhu', name: 'Suhu °C', stroke: '#0891b2', dot: false }, { dataKey: 'kelembaban', name: 'Kelembaban %', stroke: '#2563eb', dot: false }]} /></ChartCard></div><div className="mt-6"><DataTable columns={columns} rows={tableRows} emptyMessage="Belum ada data suhu." /></div></div>;
+  return <div><PageHeader title="Monitoring Suhu" description="Pantau suhu dan kelembaban ruang secara real-time dari sensor DHT11."><DownloadButton disabled={data.length === 0} onClick={onDownload || (() => downloadCsv(`data-suhu-${new Date().toISOString().slice(0, 10)}.csv`, temperatureExportColumns, toTemperatureExportRows(tableRows)))} /></PageHeader><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard title="Suhu Terkini" value={latest.suhu ?? '-'} suffix="°C" status={latest.keterangan} icon="🌡️" /><StatCard title="Kelembaban" value={latest.kelembaban ?? '-'} suffix="%" icon="💧" tone="blue" /><StatCard title="Rata-rata Suhu" value={avgTemp} suffix="°C" icon="📊" tone="purple" /><StatCard title="Status" value={latest.keterangan || '-'} icon={temperatureVisual.icon} tone={temperatureVisual.tone} effect={temperatureVisual.effect} /></div><div className="mt-6"><ChartCard title="Grafik Suhu dan Kelembaban" description="Riwayat pembacaan sensor per jam."><LazyLineChart data={data.slice(-120)} lines={[{ dataKey: 'suhu', name: 'Suhu °C', stroke: '#0891b2', dot: false }, { dataKey: 'kelembaban', name: 'Kelembaban %', stroke: '#2563eb', dot: false }]} /></ChartCard></div><div className="mt-6"><DataTable columns={columns} rows={tableRows} emptyMessage="Belum ada data suhu." /></div></div>;
 }
 
-function RfidPage({ data }) {
+function RfidPage({ data, onDownload }) {
   const borrowed = data.filter((row) => isBorrowedStatus(row.status)).length;
   const returned = data.filter((row) => isReturnedStatus(row.status)).length;
   const warnings = data.filter((row) => row.status === 'PERINGATAN' || row.namaAlat === 'Tidak Terdaftar').length;
@@ -1784,24 +1864,6 @@ function RfidPage({ data }) {
     ? Math.max(...durationRows.map((row) => Number(row.durasiDetik || 0)))
     : 0;
   const latestDurationSeconds = durationRows.at(-1)?.durasiDetik || 0;
-  const exportColumns = [
-    { key: 'tanggal', label: 'Tanggal' },
-    { key: 'jam', label: 'Jam' },
-    { key: 'uid', label: 'UID Kartu' },
-    { key: 'namaAlat', label: 'Nama Alat' },
-    { key: 'status', label: 'Status' },
-    { key: 'durasi', label: 'Durasi Peminjaman' },
-    { key: 'keterangan', label: 'Keterangan' },
-  ];
-  const exportRows = [...data].reverse().map((row) => ({
-    tanggal: formatJakartaDate(row.timestamp),
-    jam: row.jam,
-    uid: row.uid,
-    namaAlat: row.namaAlat,
-    status: row.status,
-    durasi: row.durasi,
-    keterangan: row.keterangan,
-  }));
   const columns = [
     { key: 'jam', label: 'Jam' },
     { key: 'uid', label: 'UID Kartu', render: (row) => <span className="font-mono text-xs font-bold text-slate-700">{row.uid}</span> },
@@ -1813,7 +1875,7 @@ function RfidPage({ data }) {
   return (
     <div>
       <PageHeader title="RFID Alat" description="Monitoring peminjaman dan pengembalian alat berbasis kartu RFID.">
-        <DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-rfid-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} />
+        <DownloadButton disabled={data.length === 0} onClick={onDownload || (() => downloadCsv(`data-rfid-${new Date().toISOString().slice(0, 10)}.csv`, rfidExportColumns, toRfidExportRows(data)))} />
       </PageHeader>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard title="Total Scan" value={data.length} icon="🏷️" />
@@ -1854,7 +1916,7 @@ function formatAtsReading(value, unit) {
   return `${Math.round(n).toLocaleString('id-ID')} V`;
 }
 
-function AtsPage({ data }) {
+function AtsPage({ data, onDownload }) {
   const latest = data.at(-1) || {};
   const backupCount = data.filter((row) => row.sumberAktif === 'Generator').length;
   const downCount = data.filter((row) => (
@@ -1865,36 +1927,6 @@ function AtsPage({ data }) {
   const sumberTone = latest.sumberAktif === 'Generator'
     ? 'orange'
     : (latest.sumberAktif === 'Mati' || latest.sumberAktif === 'TIDAK ADA' ? 'red' : 'green');
-  const exportColumns = [
-    { key: 'tanggal', label: 'Tanggal' },
-    { key: 'jam', label: 'Jam' },
-    { key: 'teganganPln', label: 'Tegangan PLN (V)' },
-    { key: 'arusPln', label: 'Arus PLN (A)' },
-    { key: 'wattPln', label: 'Watt PLN (W)' },
-    { key: 'teganganGenerator', label: 'Tegangan Generator (V)' },
-    { key: 'arusGenerator', label: 'Arus Generator (A)' },
-    { key: 'wattGenerator', label: 'Watt Generator (W)' },
-    { key: 'statusPln', label: 'Status PLN' },
-    { key: 'statusGenerator', label: 'Status Generator' },
-    { key: 'sumberAktif', label: 'Sumber Aktif' },
-    { key: 'statusRelay', label: 'Relay' },
-    { key: 'keterangan', label: 'Keterangan' },
-  ];
-  const exportRows = [...data].reverse().map((row) => ({
-    tanggal: formatJakartaDate(row.timestamp),
-    jam: row.jam,
-    teganganPln: row.teganganPln,
-    arusPln: row.arusPln,
-    wattPln: row.wattPln,
-    teganganGenerator: row.teganganGenerator,
-    arusGenerator: row.arusGenerator,
-    wattGenerator: row.wattGenerator,
-    statusPln: row.statusPln,
-    statusGenerator: row.statusGenerator,
-    sumberAktif: row.sumberAktif,
-    statusRelay: row.statusRelay,
-    keterangan: row.keterangan,
-  }));
   const columns = [
     { key: 'jam', label: 'Jam' },
     { key: 'teganganPln', label: 'Tegangan PLN', render: (row) => <span>{formatAtsReading(row.teganganPln, 'V')}</span> },
@@ -1912,7 +1944,7 @@ function AtsPage({ data }) {
   return (
     <div>
       <PageHeader title="ATS PLN / Generator" description="Parameter mengikuti kolom log Sheet: tegangan/arus/watt per sumber, status PLN & Generator (YA/TIDAK), sumber aktif, relay, dan keterangan.">
-        <DownloadButton disabled={data.length === 0} onClick={() => downloadCsv(`data-ats-${new Date().toISOString().slice(0, 10)}.csv`, exportColumns, exportRows)} />
+        <DownloadButton disabled={data.length === 0} onClick={onDownload || (() => downloadCsv(`data-ats-${new Date().toISOString().slice(0, 10)}.csv`, atsExportColumns, toAtsExportRows(data)))} />
       </PageHeader>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Sumber Aktif" value={latest.sumberAktif ?? '-'} icon="⚡" status={latest.keterangan} tone={sumberTone} />
@@ -2124,8 +2156,12 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(e.parameter.sheet || "suhu");
   const rows = sheet.getDataRange().getValues();
   const headers = rows.shift();
-  const data = rows.map(row => Object.fromEntries(headers.map((h, i) => [h, row[i]])));
-  return ContentService.createTextOutput(JSON.stringify({ data })).setMimeType(ContentService.MimeType.JSON);
+  const limit = Math.max(0, Number(e.parameter.limit || 0));
+  const sourceRows = limit > 0 ? rows.slice(-limit) : rows;
+  const data = sourceRows.map(row => Object.fromEntries(headers.map((h, i) => [h, row[i]])));
+  return ContentService
+    .createTextOutput(JSON.stringify({ total: rows.length, returned: data.length, limit, data }))
+    .setMimeType(ContentService.MimeType.JSON);
 }`;
   const wifiAppScript = `const WIFI_SHEET_NAME = "wifi_config";
 
@@ -2558,25 +2594,25 @@ export default function IoTDashboardApp() {
     }
     try {
       const [tempResult, rfidResult, atsResult] = await Promise.allSettled([
-        apiConfig.temperatureUrl?.trim() ? fetchSheetJson(apiConfig.temperatureUrl) : Promise.reject(new Error('URL API Suhu belum diisi.')),
-        apiConfig.rfidUrl?.trim() ? fetchSheetJson(apiConfig.rfidUrl) : Promise.reject(new Error('URL API RFID belum diisi.')),
-        apiConfig.atsUrl?.trim() ? fetchSheetJson(apiConfig.atsUrl) : Promise.reject(new Error('URL API ATS belum diisi.')),
+        apiConfig.temperatureUrl?.trim() ? fetchSheetJson(apiConfig.temperatureUrl, { limit: DATA_FETCH_LIMIT }) : Promise.reject(new Error('URL API Suhu belum diisi.')),
+        apiConfig.rfidUrl?.trim() ? fetchSheetJson(apiConfig.rfidUrl, { limit: DATA_FETCH_LIMIT }) : Promise.reject(new Error('URL API RFID belum diisi.')),
+        apiConfig.atsUrl?.trim() ? fetchSheetJson(apiConfig.atsUrl, { limit: DATA_FETCH_LIMIT }) : Promise.reject(new Error('URL API ATS belum diisi.')),
       ]);
 
       if (tempResult.status === 'fulfilled') {
-        setStateIfUsable(setTemperature, normalizeTemperature(tempResult.value));
+        setStateIfUsable(setTemperature, normalizeTemperature(limitSheetPayload(tempResult.value)));
       } else {
         console.error('Gagal membaca API Suhu.', tempResult.reason);
       }
 
       if (rfidResult.status === 'fulfilled') {
-        setStateIfUsable(setRfid, normalizeRfid(rfidResult.value));
+        setStateIfUsable(setRfid, normalizeRfid(limitSheetPayload(rfidResult.value)));
       } else {
         console.error('Gagal membaca API RFID.', rfidResult.reason);
       }
 
       if (atsResult.status === 'fulfilled') {
-        setStateIfUsable(setAts, normalizeAts(atsResult.value));
+        setStateIfUsable(setAts, normalizeAts(limitSheetPayload(atsResult.value)));
       } else {
         console.error('Gagal membaca API ATS.', atsResult.reason);
       }
@@ -2616,6 +2652,52 @@ export default function IoTDashboardApp() {
   
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, apiConfig.temperatureUrl, apiConfig.rfidUrl, apiConfig.atsUrl]);
+
+  const downloadFullDataset = async (type) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const configs = {
+      temperature: {
+        url: apiConfig.temperatureUrl,
+        fallbackRows: temperature,
+        filename: `data-suhu-${today}.csv`,
+        columns: temperatureExportColumns,
+        normalize: normalizeTemperature,
+        toRows: toTemperatureExportRows,
+        label: 'Suhu',
+      },
+      rfid: {
+        url: apiConfig.rfidUrl,
+        fallbackRows: rfid,
+        filename: `data-rfid-${today}.csv`,
+        columns: rfidExportColumns,
+        normalize: normalizeRfid,
+        toRows: toRfidExportRows,
+        label: 'RFID',
+      },
+      ats: {
+        url: apiConfig.atsUrl,
+        fallbackRows: ats,
+        filename: `data-ats-${today}.csv`,
+        columns: atsExportColumns,
+        normalize: normalizeAts,
+        toRows: toAtsExportRows,
+        label: 'ATS',
+      },
+    };
+    const target = configs[type];
+    if (!target) return;
+
+    try {
+      const rows = mode === 'api' && target.url?.trim()
+        ? target.normalize(await fetchSheetJson(target.url))
+        : target.fallbackRows;
+      downloadCsv(target.filename, target.columns, target.toRows(rows));
+    } catch (error) {
+      console.error(`Gagal download data ${target.label}.`, error);
+      alert(`Gagal download data ${target.label}. Dashboard akan memakai data yang sedang tampil.`);
+      downloadCsv(target.filename, target.columns, target.toRows(target.fallbackRows));
+    }
+  };
 
   const saveConfig = (nextConfig) => {
     const normalizedConfig = { ...DEFAULT_API_CONFIG, ...nextConfig };
@@ -2996,9 +3078,9 @@ export default function IoTDashboardApp() {
 
     switch (activePage) {
       case 'dashboard': return renderSharedDashboard();
-      case 'suhu': return <TemperaturePage data={temperature} />;
-      case 'rfid': return <RfidPage data={rfid} />;
-      case 'ats': return <AtsPage data={ats} />;
+      case 'suhu': return <TemperaturePage data={temperature} onDownload={() => downloadFullDataset('temperature')} />;
+      case 'rfid': return <RfidPage data={rfid} onDownload={() => downloadFullDataset('rfid')} />;
+      case 'ats': return <AtsPage data={ats} onDownload={() => downloadFullDataset('ats')} />;
       case 'users':
   return currentUser?.role === 'admin'
     ? (
