@@ -2,6 +2,7 @@ node_modules/
 dist/
 .vercel/
 .env
+deploy/google-cloud/env.sh
 .venv/
 yolo_backend/.venv/
 __pycache__/
