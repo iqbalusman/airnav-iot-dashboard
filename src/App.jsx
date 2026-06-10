@@ -369,7 +369,7 @@ function normalizeBackendUrl(value) {
 }
 
 function normalizeCameraSource(value) {
-  const text = String(value || '0').trim();
+  const text = String(value || '0').trim().replace(/^0+(?=(https?|rtsp):\/\/)/i, '');
   if (!text) return '0';
   if (/^\d+$/.test(text)) return text;
   if (/^(https?|rtsp):\/\//i.test(text)) return text;
