@@ -1,0 +1,9 @@
+# Dataset YOLO untuk deteksi APD AirNav
+# Dataset awal ini hanya berisi label helm dan rompi.
+path: ./training_yolo/dataset
+train: images/train
+val: images/val
+
+names:
+  0: helmet_airnav
+  1: vest_airnav

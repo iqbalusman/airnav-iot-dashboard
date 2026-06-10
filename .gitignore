@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.vercel/
+.env
+.venv/
+yolo_backend/.venv/
+__pycache__/
+*.pyc
+runs/
+captures/
+logs/*.csv
+captures/violations/*.jpg
+models/*.pt
+*.pt
+!models/.gitkeep
