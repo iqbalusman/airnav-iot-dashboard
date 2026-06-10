@@ -6,6 +6,7 @@ dist/
 yolo_backend/.venv/
 __pycache__/
 *.pyc
+*.cache
 runs/
 captures/
 logs/*.csv
