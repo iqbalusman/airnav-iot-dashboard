@@ -45,6 +45,31 @@ function normalizeBackendUrl(value) {
   return text || DEFAULT_CONFIG.backendUrl;
 }
 
+function getCameraHost(value) {
+  const text = String(value || '').trim();
+  if (!text || text === '0' || /^\d+$/.test(text)) return '';
+  try {
+    return new URL(/^(https?|rtsp):\/\//i.test(text) ? text : `http://${text}`).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function isPrivateCameraSource(value) {
+  const host = getCameraHost(value);
+  if (!host) return false;
+  if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  const match172 = host.match(/^172\.(\d+)\./);
+  return Boolean(match172 && Number(match172[1]) >= 16 && Number(match172[1]) <= 31);
+}
+
+function isCloudYoloBackend(value) {
+  const backend = normalizeBackendUrl(value);
+  return !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(backend);
+}
+
 function apiUrl(baseUrl, path) {
   return `${normalizeBackendUrl(baseUrl)}${path}`;
 }
@@ -169,10 +194,14 @@ export default function YoloDetectionPage({ initialConfig, canExportLogs = false
     setVideoVersion(Date.now());
   }, [backendOnline, status?.system, status?.yolo_enabled, status?.active_camera_source, status?.camera_source]);
 
-  const ppeStatus = status?.ppe_status || 'BELUM ADA DATA';
+  const privateCloudSource = isCloudYoloBackend(config.backendUrl) && isPrivateCameraSource(config.cameraSource);
+  const ppeStatus = privateCloudSource ? 'IP LOKAL BUTUH TUNNEL' : (status?.ppe_status || 'BELUM ADA DATA');
   const tone = statusTone(ppeStatus);
   const confidence = status?.confidence !== undefined ? `${Math.round(Number(status.confidence || 0) * 100)}%` : '0%';
   const customModel = status?.custom_model_available ? 'Custom best.pt aktif' : 'Mode demo / model custom belum ada';
+  const displayMessage = privateCloudSource
+    ? 'Backend Google Cloud tidak bisa membaca IP lokal langsung. Upload URL public/tunnel kamera, lalu jalankan YOLO Ringan.'
+    : message;
 
   return (
     <div>
@@ -216,7 +245,7 @@ export default function YoloDetectionPage({ initialConfig, canExportLogs = false
             <div className={`rounded-[1.6rem] border p-5 ${tone === 'emerald' ? 'border-emerald-300/30 bg-emerald-400/10' : tone === 'rose' ? 'border-rose-300/30 bg-rose-400/10' : tone === 'amber' ? 'border-amber-300/30 bg-amber-400/10' : 'border-cyan-300/20 bg-cyan-400/10'}`}>
               <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-300">Status APD</p>
               <h2 className="mt-3 text-3xl font-black text-white lg:text-4xl">{ppeStatus}</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-300">{message}</p>
+              <p className="mt-3 text-sm leading-6 text-slate-300">{displayMessage}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
