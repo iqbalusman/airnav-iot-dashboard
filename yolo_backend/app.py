@@ -546,6 +546,22 @@ class PPEVideoEngine:
                 continue
 
             if frame_id % self.infer_every != 0:
+                preview = frame.copy()
+                with self.lock:
+                    current_status = dict(self.last_status)
+                if current_status.get("system") in {"running", "camera_connected"}:
+                    self._draw_panel(
+                        preview,
+                        "AIRNAV PPE",
+                        f"P:{current_status.get('people', 0)} H:{current_status.get('helmet', 0)} R:{current_status.get('vest', 0)} | {current_status.get('ppe_status', 'PROSES')}",
+                    )
+                with self.lock:
+                    self.annotated_frame = preview
+                    self.last_status.update({
+                        "fps_camera": self.capture_fps,
+                        "fps_inference": round(self.infer_fps, 1),
+                        "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    })
                 self._encode_latest()
                 time.sleep(0.005)
                 continue
