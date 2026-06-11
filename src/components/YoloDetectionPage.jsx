@@ -232,7 +232,7 @@ export default function YoloDetectionPage({ initialConfig, canExportLogs = false
               <div className="mt-3">
                 <DetectionRow label="FPS Kamera" value={status?.fps_camera ?? 0} />
                 <DetectionRow label="FPS Deteksi" value={status?.fps_inference ?? 0} />
-                <DetectionRow label="Sumber Kamera" value={status?.camera_source || config.cameraSource} />
+                <DetectionRow label="Sumber Kamera" value={config.cameraSource || status?.camera_source} />
                 {status?.active_camera_source && <DetectionRow label="API Stream Aktif" value={status.active_camera_source} />}
                 {status?.camera_control && <DetectionRow label="Kontrol Kamera" value={status.camera_control} />}
                 {status?.camera_error && <DetectionRow label="Error Kamera" value={status.camera_error} />}
@@ -251,7 +251,7 @@ export default function YoloDetectionPage({ initialConfig, canExportLogs = false
           <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] px-4">
             <DetectionRow label="Mode Kamera" value={(status?.yolo_enabled ?? config.yoloEnabled) ? 'YOLO' : 'CCTV'} />
             <DetectionRow label="Backend" value={config.backendUrl} />
-            <DetectionRow label="Sumber Kamera" value={status?.camera_source || config.cameraSource} />
+            <DetectionRow label="Sumber Kamera" value={config.cameraSource || status?.camera_source} />
             {status?.active_camera_source && <DetectionRow label="API Stream Aktif" value={status.active_camera_source} />}
             <DetectionRow label="Model" value={status?.model_path || config.modelPath} />
             <DetectionRow label="JPEG Quality" value={config.jpegQuality} />

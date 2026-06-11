@@ -2217,13 +2217,19 @@ function UserManagementPage({ users, userLoading, onRefreshUsers, onApproveUser,
   );
 }
 
-function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, onRefresh, loading, apiWarning, deviceWifiForm, setDeviceWifiForm, deviceWifiError, deviceWifiSuccess, deviceWifiSavedConfig, deviceWifiLoading, onSaveDeviceWifi, yoloConfig, onSaveYoloCamera, onSaveYoloConfig, yoloLoading, yoloCameraLoading, yoloMessage }) {
+function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, onRefresh, loading, apiWarning, deviceWifiForm, setDeviceWifiForm, deviceWifiError, deviceWifiSuccess, deviceWifiSavedConfig, deviceWifiLoading, onSaveDeviceWifi, yoloConfig, onSaveYoloCamera, onSaveYoloConfig, onUpdateYoloDraft, yoloLoading, yoloCameraLoading, yoloMessage }) {
   const [form, setForm] = useState(apiConfig);
   const [yoloForm, setYoloForm] = useState(yoloConfig);
   useEffect(() => setForm(apiConfig), [apiConfig]);
   useEffect(() => setYoloForm(yoloConfig), [yoloConfig]);
   const update = (field, value) => setForm((previous) => ({ ...previous, [field]: value }));
-  const updateYolo = (field, value) => setYoloForm((previous) => ({ ...previous, [field]: value }));
+  const updateYolo = (field, value) => setYoloForm((previous) => {
+    const nextForm = { ...previous, [field]: value };
+    if (field === 'cameraSource' && typeof onUpdateYoloDraft === 'function') {
+      onUpdateYoloDraft(normalizeYoloConfig(nextForm));
+    }
+    return nextForm;
+  });
   const updateDeviceWifi = (field, value) => setDeviceWifiForm((previous) => ({ ...previous, [field]: value }));
   const submit = (event) => { event.preventDefault(); onSave(form); };
   const submitYolo = (event) => {
@@ -3233,6 +3239,13 @@ export default function IoTDashboardApp() {
     }
   };
 
+  const handleUpdateYoloDraft = (nextConfig) => {
+    const normalizedConfig = normalizeYoloConfig(nextConfig);
+    setYoloConfig(normalizedConfig);
+    saveJson(YOLO_STORAGE_KEY, normalizedConfig);
+    setYoloMessage(`IP kamera siap dipakai: ${normalizedConfig.cameraSource}. Tekan Upload IP + YOLO Ringan untuk menjalankan deteksi ringan.`);
+  };
+
   const handleSaveYoloConfig = async (nextConfig) => {
     const normalizedConfig = normalizeYoloConfig(nextConfig);
     setYoloConfig(normalizedConfig);
@@ -3310,7 +3323,7 @@ export default function IoTDashboardApp() {
       />
     )
     : renderSharedDashboard();
-      case 'api': return isCurrentAdmin ? <ApiSettingsPage apiConfig={apiConfig} mode={mode} setMode={handleSetMode} connectionStatus={connectionStatus} onSave={saveConfig} onRefresh={refreshData} loading={loading} apiWarning={apiWarning} deviceWifiForm={deviceWifiForm} setDeviceWifiForm={setDeviceWifiForm} deviceWifiError={deviceWifiError} deviceWifiSuccess={deviceWifiSuccess} deviceWifiSavedConfig={deviceWifiSavedConfig} deviceWifiLoading={deviceWifiLoading} onSaveDeviceWifi={handleSaveDeviceWifi} yoloConfig={yoloConfig} onSaveYoloCamera={handleSaveYoloCamera} onSaveYoloConfig={handleSaveYoloConfig} yoloLoading={yoloLoading} yoloCameraLoading={yoloCameraLoading} yoloMessage={yoloMessage} /> : renderSharedDashboard();
+      case 'api': return isCurrentAdmin ? <ApiSettingsPage apiConfig={apiConfig} mode={mode} setMode={handleSetMode} connectionStatus={connectionStatus} onSave={saveConfig} onRefresh={refreshData} loading={loading} apiWarning={apiWarning} deviceWifiForm={deviceWifiForm} setDeviceWifiForm={setDeviceWifiForm} deviceWifiError={deviceWifiError} deviceWifiSuccess={deviceWifiSuccess} deviceWifiSavedConfig={deviceWifiSavedConfig} deviceWifiLoading={deviceWifiLoading} onSaveDeviceWifi={handleSaveDeviceWifi} yoloConfig={yoloConfig} onSaveYoloCamera={handleSaveYoloCamera} onSaveYoloConfig={handleSaveYoloConfig} onUpdateYoloDraft={handleUpdateYoloDraft} yoloLoading={yoloLoading} yoloCameraLoading={yoloCameraLoading} yoloMessage={yoloMessage} /> : renderSharedDashboard();
       default: return renderSharedDashboard();
     }
   };
