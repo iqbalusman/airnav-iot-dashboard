@@ -19,6 +19,7 @@ const SHEET_TIME_TO_WITA_OFFSET_HOURS = 0;
 const DATA_FETCH_LIMIT = 200;
 const TABLE_DISPLAY_LIMIT = 300;
 const DEFAULT_USER_MANAGEMENT_API = 'https://script.google.com/macros/s/AKfycbx2t74IMPV1VWD76PA-UlWJkydOYftZ5-2QEa1jkV1wysH3A8UuTa2co7YfkqtU4gPaNw/exec';
+const DEFAULT_YOLO_BACKEND_URL = 'https://yolo.34.101.183.214.sslip.io';
 const DEVICE_WIFI_OPTIONS = ['ESP32-1', 'ESP32-2', 'ESP32-3'];
 const RFID_TOOL_ITEMS = [
   { uid: 'BD27B889', namaAlat: 'OBENG SET' },
@@ -40,7 +41,7 @@ const DEFAULT_API_CONFIG = {
 };
 
 const DEFAULT_YOLO_CONFIG = {
-  backendUrl: 'http://127.0.0.1:5050',
+  backendUrl: DEFAULT_YOLO_BACKEND_URL,
   cameraSource: '0',
   modelPath: 'models/best.pt',
   yoloEnabled: true,
@@ -365,6 +366,7 @@ function saveJson(key, value) {
 
 function normalizeBackendUrl(value) {
   const text = String(value || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\/(127\.0\.0\.1|localhost):5050$/i.test(text)) return DEFAULT_YOLO_BACKEND_URL;
   return text || DEFAULT_YOLO_CONFIG.backendUrl;
 }
 

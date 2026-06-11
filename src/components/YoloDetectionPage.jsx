@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'airnav-yolo-detection-config-v2';
+const DEFAULT_YOLO_BACKEND_URL = 'https://yolo.34.101.183.214.sslip.io';
 
 const DEFAULT_CONFIG = {
-  backendUrl: 'http://127.0.0.1:5050',
+  backendUrl: DEFAULT_YOLO_BACKEND_URL,
   cameraSource: '0',
   modelPath: 'models/best.pt',
   yoloEnabled: true,
@@ -25,6 +26,7 @@ function loadConfig() {
 
 function normalizeBackendUrl(value) {
   const text = String(value || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\/(127\.0\.0\.1|localhost):5050$/i.test(text)) return DEFAULT_YOLO_BACKEND_URL;
   return text || DEFAULT_CONFIG.backendUrl;
 }
 
