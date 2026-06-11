@@ -21,6 +21,11 @@ const TABLE_DISPLAY_LIMIT = 300;
 const DEFAULT_USER_MANAGEMENT_API = 'https://script.google.com/macros/s/AKfycbx2t74IMPV1VWD76PA-UlWJkydOYftZ5-2QEa1jkV1wysH3A8UuTa2co7YfkqtU4gPaNw/exec';
 const DEFAULT_YOLO_BACKEND_URL = 'https://yolo.34.101.183.214.sslip.io';
 const DEFAULT_YOLO_CAMERA_SOURCE = 'https://deeper-favourite-shall-applications.trycloudflare.com/video';
+const LIGHT_YOLO_PRESET = {
+  imageSize: '160',
+  inferEvery: '4',
+  jpegQuality: '32',
+};
 const DEVICE_WIFI_OPTIONS = ['ESP32-1', 'ESP32-2', 'ESP32-3'];
 const RFID_TOOL_ITEMS = [
   { uid: 'BD27B889', namaAlat: 'OBENG SET' },
@@ -47,9 +52,7 @@ const DEFAULT_YOLO_CONFIG = {
   modelPath: 'models/best.pt',
   yoloEnabled: true,
   confidence: '0.45',
-  imageSize: '160',
-  inferEvery: '4',
-  jpegQuality: '32',
+  ...LIGHT_YOLO_PRESET,
 };
 
 const DEFAULT_ADMIN = {
@@ -374,7 +377,7 @@ function normalizeBackendUrl(value) {
 function normalizeCameraSource(value) {
   const text = String(value || '0').trim().replace(/^0+(?=(https?|rtsp):\/\/)/i, '');
   if (!text) return '0';
-  if (/^(https?:\/\/)?192\.168\.1\.(51|33)(:\d+)?(\/.*)?$/i.test(text)) return DEFAULT_YOLO_CAMERA_SOURCE;
+  if (/^(https?:\/\/)?192\.168\.1\.(51|33|42)(:\d+)?(\/.*)?$/i.test(text)) return DEFAULT_YOLO_CAMERA_SOURCE;
   if (/^\d+$/.test(text)) return text;
   if (/^(https?|rtsp):\/\//i.test(text)) return text;
 
@@ -388,7 +391,7 @@ function normalizeCameraSource(value) {
     const normalizedOctets = octets.map((part) => String(Number(part)));
     const validIp = normalizedOctets.every((part) => Number(part) >= 0 && Number(part) <= 255);
     if (validIp) {
-      return `${normalizedOctets.join('.')}${port ? `:${port}` : ''}${path}`;
+      return `http://${normalizedOctets.join('.')}${port ? `:${port}` : ''}${path}`;
     }
   }
 
@@ -2236,9 +2239,7 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
     const nextForm = normalizeYoloConfig({
       ...yoloForm,
       yoloEnabled: true,
-      imageSize: '160',
-      inferEvery: '4',
-      jpegQuality: '32',
+      ...LIGHT_YOLO_PRESET,
     });
     setYoloForm(nextForm);
     onSaveYoloConfig(nextForm);
@@ -2398,7 +2399,7 @@ function doPost(e) {
                 <p className="text-xs font-black uppercase tracking-wider text-emerald-100/80">Preset stabil</p>
                 <p className="mt-1 text-sm font-semibold leading-6 text-emerald-50">YOLO Ringan memakai frame kecil agar stream tidak mudah freeze.</p>
               </div>
-              <button type="button" onClick={runLightYoloMode} disabled={yoloLoading} className="rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Mode YOLO Ringan</button>
+              <button type="button" onClick={runLightYoloMode} disabled={yoloLoading} className="rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Upload IP + YOLO Ringan</button>
             </div>
           </div>
           <div className="lg:col-span-2 grid gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm text-cyan-50 lg:grid-cols-[1fr_auto] lg:items-center">
@@ -2406,7 +2407,7 @@ function doPost(e) {
               <p className="text-xs font-black uppercase tracking-wider text-cyan-100/70">IP Stream Kamera Aktif</p>
               <p className="mt-1 break-all text-base font-black text-white">{activeCameraSource}</p>
             </div>
-            <button type="button" onClick={saveYoloCamera} disabled={yoloCameraLoading} className="rounded-2xl border border-cyan-200/30 bg-white/10 px-4 py-3 text-sm font-black text-cyan-50 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60">{yoloCameraLoading ? 'Menyimpan IP...' : 'Simpan IP Kamera'}</button>
+            <button type="button" onClick={saveYoloCamera} disabled={yoloCameraLoading} className="rounded-2xl border border-cyan-200/30 bg-white/10 px-4 py-3 text-sm font-black text-cyan-50 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60">{yoloCameraLoading ? 'Upload IP...' : 'Upload IP Kamera'}</button>
           </div>
           <label className="block lg:col-span-2">
             <span className="mb-2 block text-sm font-semibold text-slate-200">Path Model YOLO</span>
