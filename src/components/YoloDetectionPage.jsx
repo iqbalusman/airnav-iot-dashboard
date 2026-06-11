@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   confidence: '0.45',
   imageSize: '160',
   inferEvery: '4',
-  jpegQuality: '40',
+  jpegQuality: '32',
 };
 
 function normalizeCameraSource(value) {

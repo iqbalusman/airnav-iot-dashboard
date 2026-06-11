@@ -154,9 +154,11 @@ class PPEVideoEngine:
         self.conf = safe_number(conf, 0.45, float, 0.05, 0.95)
         self.imgsz = safe_number(imgsz, 320, int, 160, 640)
         self.infer_every = safe_number(infer_every, 2, int, 1, 10)
-        self.jpeg_quality = safe_number(jpeg_quality, 85, int, 40, 95)
+        self.jpeg_quality = safe_number(jpeg_quality, 85, int, 30, 95)
         self.stream_width = int(os.getenv("STREAM_WIDTH", "480"))
-        if self.imgsz <= 224:
+        if self.imgsz <= 192:
+            self.stream_width = min(self.stream_width, 280)
+        elif self.imgsz <= 224:
             self.stream_width = min(self.stream_width, 360)
         elif self.imgsz <= 256:
             self.stream_width = min(self.stream_width, 426)
@@ -931,7 +933,7 @@ def api_change_source():
     conf = safe_number(payload.get("conf", 0.45), 0.45, float, 0.05, 0.95)
     imgsz = safe_number(payload.get("imgsz", 320), 320, int, 160, 640)
     infer_every = safe_number(payload.get("infer_every", 2), 2, int, 1, 10)
-    jpeg_quality = safe_number(payload.get("jpeg_quality", 85), 85, int, 40, 95)
+    jpeg_quality = safe_number(payload.get("jpeg_quality", 85), 85, int, 30, 95)
     yolo_enabled = boolish(payload.get("yolo_enabled", True), True)
 
     restart_engine(source, model_path, conf, imgsz, infer_every, jpeg_quality, yolo_enabled)
