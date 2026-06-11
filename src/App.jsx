@@ -2223,13 +2223,13 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
   useEffect(() => setForm(apiConfig), [apiConfig]);
   useEffect(() => setYoloForm(yoloConfig), [yoloConfig]);
   const update = (field, value) => setForm((previous) => ({ ...previous, [field]: value }));
-  const updateYolo = (field, value) => setYoloForm((previous) => {
-    const nextForm = { ...previous, [field]: value };
-    if (field === 'cameraSource' && typeof onUpdateYoloDraft === 'function') {
-      onUpdateYoloDraft(normalizeYoloConfig(nextForm));
-    }
-    return nextForm;
-  });
+  const updateYolo = (field, value) => setYoloForm((previous) => ({ ...previous, [field]: value }));
+  const syncYoloDraft = () => {
+    if (typeof onUpdateYoloDraft !== 'function') return;
+    const normalizedConfig = normalizeYoloConfig(yoloForm);
+    setYoloForm(normalizedConfig);
+    onUpdateYoloDraft(normalizedConfig);
+  };
   const updateDeviceWifi = (field, value) => setDeviceWifiForm((previous) => ({ ...previous, [field]: value }));
   const submit = (event) => { event.preventDefault(); onSave(form); };
   const submitYolo = (event) => {
@@ -2390,7 +2390,7 @@ function doPost(e) {
           </label>
           <label className="block">
             <span className="mb-2 block text-sm font-semibold text-slate-200">API / IP Kamera</span>
-            <input value={yoloForm.cameraSource || ''} onChange={(event) => updateYolo('cameraSource', event.target.value)} placeholder="192.168.1.51, http://IP:PORT/stream, atau rtsp://..." className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none ring-cyan-400 transition placeholder:text-slate-500 focus:ring-2" />
+            <input value={yoloForm.cameraSource || ''} onChange={(event) => updateYolo('cameraSource', event.target.value)} onBlur={syncYoloDraft} placeholder="192.168.1.51, http://IP:PORT/stream, atau rtsp://..." className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none ring-cyan-400 transition placeholder:text-slate-500 focus:ring-2" />
           </label>
           <div className="lg:col-span-2">
             <span className="mb-2 block text-sm font-semibold text-slate-200">Mode Kamera</span>
