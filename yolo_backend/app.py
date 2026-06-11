@@ -30,6 +30,30 @@ def parse_source(value: str):
     return int(value) if value.isdigit() else value
 
 
+def source_host(value: str) -> str:
+    text = str(value or "").strip()
+    if not text or text.isdigit():
+        return ""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(text if "://" in text else f"http://{text}")
+        return normalize_ip_host(parsed.hostname or "")
+    except Exception:
+        return ""
+
+
+def is_private_source(value: str) -> bool:
+    host = source_host(value)
+    if not host:
+        return False
+    if host in {"localhost", "127.0.0.1"}:
+        return True
+    if host.startswith("10.") or host.startswith("192.168."):
+        return True
+    parts = host.split(".")
+    return len(parts) > 1 and parts[0] == "172" and parts[1].isdigit() and 16 <= int(parts[1]) <= 31
+
+
 def normalize_ip_host(host: str) -> str:
     host = str(host or "").strip()
     octets = host.split(".")
@@ -874,6 +898,8 @@ class PPEVideoEngine:
 app = Flask(__name__)
 engine: Optional[PPEVideoEngine] = None
 engine_lock = threading.RLock()
+tunnel_request_lock = threading.RLock()
+pending_tunnel_request: Dict[str, Any] = {}
 
 
 @app.after_request
@@ -923,6 +949,47 @@ def api_status():
     return jsonify(local_engine.get_status())
 
 
+@app.route("/api/ppe/tunnel-request", methods=["GET", "POST", "OPTIONS"])
+def api_tunnel_request():
+    global pending_tunnel_request
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True})
+    if request.method == "GET":
+        with tunnel_request_lock:
+            return jsonify({"ok": True, "request": dict(pending_tunnel_request)})
+
+    payload = request.get_json(silent=True) or {}
+    public_source = str(payload.get("public_source", "")).strip()
+    if not public_source:
+        return jsonify({"ok": False, "message": "public_source wajib diisi."}), 400
+
+    with tunnel_request_lock:
+        request_config = dict(pending_tunnel_request)
+        pending_tunnel_request = {}
+
+    if not request_config:
+        request_config = {
+            "source": public_source,
+            "model_path": str(MODELS_DIR / "best.pt"),
+            "conf": 0.45,
+            "imgsz": 160,
+            "infer_every": 4,
+            "jpeg_quality": 32,
+            "yolo_enabled": True,
+        }
+
+    restart_engine(
+        public_source,
+        str(request_config.get("model_path") or (MODELS_DIR / "best.pt")),
+        safe_number(request_config.get("conf", 0.45), 0.45, float, 0.05, 0.95),
+        safe_number(request_config.get("imgsz", 160), 160, int, 160, 640),
+        safe_number(request_config.get("infer_every", 4), 4, int, 1, 10),
+        safe_number(request_config.get("jpeg_quality", 32), 32, int, 30, 95),
+        boolish(request_config.get("yolo_enabled", True), True),
+    )
+    return jsonify({"ok": True, "message": f"Tunnel aktif. YOLO membaca {public_source}", "source": public_source})
+
+
 @app.route("/api/ppe/source", methods=["POST", "OPTIONS"])
 def api_change_source():
     if request.method == "OPTIONS":
@@ -935,6 +1002,28 @@ def api_change_source():
     infer_every = safe_number(payload.get("infer_every", 2), 2, int, 1, 10)
     jpeg_quality = safe_number(payload.get("jpeg_quality", 85), 85, int, 30, 95)
     yolo_enabled = boolish(payload.get("yolo_enabled", True), True)
+
+    if is_private_source(source):
+        global pending_tunnel_request
+        with tunnel_request_lock:
+            pending_tunnel_request = {
+                "source": source,
+                "model_path": model_path,
+                "conf": conf,
+                "imgsz": imgsz,
+                "infer_every": infer_every,
+                "jpeg_quality": jpeg_quality,
+                "yolo_enabled": yolo_enabled,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        return jsonify({
+            "ok": True,
+            "needs_tunnel": True,
+            "message": f"IP lokal {source} diterima. Menunggu camera tunnel agent membuat URL public otomatis.",
+            "source": source,
+            "yolo_enabled": yolo_enabled,
+            "camera_candidates": camera_source_candidates(source),
+        })
 
     restart_engine(source, model_path, conf, imgsz, infer_every, jpeg_quality, yolo_enabled)
     candidates = camera_source_candidates(source)

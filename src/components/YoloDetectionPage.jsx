@@ -195,12 +195,12 @@ export default function YoloDetectionPage({ initialConfig, canExportLogs = false
   }, [backendOnline, status?.system, status?.yolo_enabled, status?.active_camera_source, status?.camera_source]);
 
   const privateCloudSource = isCloudYoloBackend(config.backendUrl) && isPrivateCameraSource(config.cameraSource);
-  const ppeStatus = privateCloudSource ? 'IP LOKAL BUTUH TUNNEL' : (status?.ppe_status || 'BELUM ADA DATA');
+  const ppeStatus = privateCloudSource ? 'MENUNGGU TUNNEL AGENT' : (status?.ppe_status || 'BELUM ADA DATA');
   const tone = statusTone(ppeStatus);
   const confidence = status?.confidence !== undefined ? `${Math.round(Number(status.confidence || 0) * 100)}%` : '0%';
   const customModel = status?.custom_model_available ? 'Custom best.pt aktif' : 'Mode demo / model custom belum ada';
   const displayMessage = privateCloudSource
-    ? 'Backend Google Cloud tidak bisa membaca IP lokal langsung. Upload URL public/tunnel kamera, lalu jalankan YOLO Ringan.'
+    ? 'IP lokal sudah diterima. Pastikan camera tunnel agent berjalan di jaringan kamera agar URL public dibuat otomatis.'
     : message;
 
   return (

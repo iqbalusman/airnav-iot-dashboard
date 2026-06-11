@@ -3267,7 +3267,7 @@ export default function IoTDashboardApp() {
     setYoloConfig(normalizedConfig);
     saveJson(YOLO_STORAGE_KEY, normalizedConfig);
     if (isCloudYoloBackend(normalizedConfig.backendUrl) && isPrivateCameraSource(normalizedConfig.cameraSource)) {
-      setYoloMessage(`IP lokal ${normalizedConfig.cameraSource} tersimpan. Agar YOLO Google Cloud bisa jalan, ubah kamera ini menjadi URL public/tunnel terlebih dahulu.`);
+      setYoloMessage(`IP lokal ${normalizedConfig.cameraSource} tersimpan. Tekan Upload IP + YOLO Ringan; camera tunnel agent akan membuat URL public otomatis.`);
       return;
     }
     setYoloMessage(`IP kamera siap dipakai: ${normalizedConfig.cameraSource}. Tekan Upload IP + YOLO Ringan untuk menjalankan deteksi ringan.`);
@@ -3277,11 +3277,6 @@ export default function IoTDashboardApp() {
     const normalizedConfig = normalizeYoloConfig(nextConfig);
     setYoloConfig(normalizedConfig);
     saveJson(YOLO_STORAGE_KEY, normalizedConfig);
-
-    if (isCloudYoloBackend(normalizedConfig.backendUrl) && isPrivateCameraSource(normalizedConfig.cameraSource)) {
-      setYoloMessage(`IP lokal ${normalizedConfig.cameraSource} sudah tersimpan, tetapi Google Cloud tidak bisa membacanya langsung. Gunakan URL public/tunnel untuk kamera ini, lalu tekan Upload IP + YOLO Ringan lagi.`);
-      return;
-    }
 
     setYoloLoading(true);
     const modeLabel = normalizedConfig.yoloEnabled ? 'sistem YOLO' : 'mode CCTV';
