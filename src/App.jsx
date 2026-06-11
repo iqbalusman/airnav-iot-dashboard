@@ -2223,14 +2223,17 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
   const updateYolo = (field, value) => setYoloForm((previous) => ({ ...previous, [field]: value }));
   const updateDeviceWifi = (field, value) => setDeviceWifiForm((previous) => ({ ...previous, [field]: value }));
   const submit = (event) => { event.preventDefault(); onSave(form); };
-  const submitYolo = (event) => { event.preventDefault(); onSaveYoloConfig({ ...yoloForm, cameraSource: yoloConfig?.cameraSource || yoloForm.cameraSource }); };
+  const submitYolo = (event) => {
+    event.preventDefault();
+    onSaveYoloConfig(normalizeYoloConfig(yoloForm));
+  };
   const switchYoloMode = (enabled) => {
-    const nextForm = { ...yoloForm, yoloEnabled: enabled, cameraSource: yoloConfig?.cameraSource || yoloForm.cameraSource };
+    const nextForm = normalizeYoloConfig({ ...yoloForm, yoloEnabled: enabled });
     setYoloForm(nextForm);
     onSaveYoloConfig(nextForm);
   };
-  const saveYoloCamera = () => onSaveYoloCamera(yoloForm);
-  const activeCameraSource = yoloConfig?.cameraSource || yoloForm.cameraSource || '0';
+  const saveYoloCamera = () => onSaveYoloCamera(normalizeYoloConfig(yoloForm));
+  const activeCameraSource = normalizeYoloConfig(yoloForm).cameraSource || yoloConfig?.cameraSource || '0';
   const yoloEnabled = yoloForm?.yoloEnabled !== false;
   const yoloButtonLabel = yoloEnabled ? 'Jalankan Sistem YOLO' : 'Jalankan Mode CCTV';
   const yoloLoadingLabel = yoloEnabled ? 'Menjalankan YOLO...' : 'Menjalankan CCTV...';
