@@ -11,7 +11,7 @@ const DEFAULT_CONFIG = {
   yoloEnabled: true,
   confidence: '0.45',
   imageSize: '160',
-  inferEvery: '5',
+  inferEvery: '4',
   jpegQuality: '40',
 };
 

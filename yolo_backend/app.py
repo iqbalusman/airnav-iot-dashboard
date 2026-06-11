@@ -182,6 +182,8 @@ class PPEVideoEngine:
         self.names: Dict[int, str] = {}
         self.last_logged_status = ""
         self.last_log_time = 0.0
+        self.last_detections: List[Dict[str, Any]] = []
+        self.last_detection_time = 0.0
         self.last_status: Dict[str, Any] = {
             "system": "starting",
             "message": "Menyiapkan kamera dan model YOLO..." if self.yolo_enabled else "Menyiapkan kamera untuk mode CCTV...",
@@ -567,6 +569,8 @@ class PPEVideoEngine:
                 preview = frame.copy()
                 with self.lock:
                     current_status = dict(self.last_status)
+                    last_detections = list(self.last_detections)
+                self._draw_detections(preview, last_detections)
                 if current_status.get("system") in {"running", "camera_connected"}:
                     self._draw_panel(
                         preview,
@@ -629,7 +633,16 @@ class PPEVideoEngine:
             }
         try:
             result = self.model.predict(frame, imgsz=self.imgsz, conf=self.conf, verbose=False)[0]
-            annotated = result.plot()
+            annotated = frame.copy()
+            detections = self._extract_detections(result)
+            with self.lock:
+                if detections:
+                    self.last_detections = detections
+                    self.last_detection_time = time.time()
+                elif (time.time() - self.last_detection_time) > 0.8:
+                    self.last_detections = []
+                detections_to_draw = list(self.last_detections)
+            self._draw_detections(annotated, detections_to_draw)
             counts = self._summarize_result(result)
             ppe_status = self._decide_status(counts)
             self._draw_panel(annotated, "AIRNAV PPE", f"P:{counts['people']} H:{counts['helmet']} R:{counts['vest']} | {ppe_status}")
@@ -663,6 +676,24 @@ class PPEVideoEngine:
                 "confidence": 0.0,
             }
 
+    def _extract_detections(self, result) -> List[Dict[str, Any]]:
+        detections = []
+        boxes = getattr(result, "boxes", None)
+        if boxes is None:
+            return detections
+        xyxy = boxes.xyxy.tolist() if hasattr(boxes, "xyxy") else []
+        cls_values = boxes.cls.tolist() if hasattr(boxes, "cls") else []
+        conf_values = boxes.conf.tolist() if hasattr(boxes, "conf") else []
+        for coords, cls_id, conf in zip(xyxy, cls_values, conf_values):
+            name = str(self.names.get(int(cls_id), int(cls_id)))
+            detections.append({
+                "xyxy": [int(round(v)) for v in coords],
+                "label": name.upper(),
+                "conf": float(conf),
+                "kind": self._class_kind(name),
+            })
+        return detections
+
     def _summarize_result(self, result) -> Dict[str, Any]:
         people = helmet = vest = 0
         max_conf = 0.0
@@ -679,6 +710,43 @@ class PPEVideoEngine:
             if any(key in name for key in ["vest", "rompi", "safety_vest", "reflective_vest", "vest_airnav"]):
                 vest += 1
         return {"people": people, "helmet": helmet, "vest": vest, "max_conf": max_conf}
+
+    @staticmethod
+    def _class_kind(name: str) -> str:
+        normalized = str(name).lower().replace("-", "_").replace(" ", "_")
+        if any(key in normalized for key in ["helmet", "helm", "hardhat", "safety_helmet", "helmet_airnav"]):
+            return "helmet"
+        if any(key in normalized for key in ["vest", "rompi", "safety_vest", "reflective_vest", "vest_airnav"]):
+            return "vest"
+        if normalized in {"person", "orang", "man", "woman"}:
+            return "person"
+        return "object"
+
+    def _draw_detections(self, frame: np.ndarray, detections: List[Dict[str, Any]]):
+        h, w = frame.shape[:2]
+        colors = {
+            "helmet": (0, 180, 255),
+            "vest": (0, 220, 110),
+            "person": (255, 170, 40),
+            "object": (230, 230, 230),
+        }
+        for item in detections:
+            x1, y1, x2, y2 = item.get("xyxy", [0, 0, 0, 0])
+            x1, x2 = max(0, min(w - 1, x1)), max(0, min(w - 1, x2))
+            y1, y2 = max(0, min(h - 1, y1)), max(0, min(h - 1, y2))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            color = colors.get(item.get("kind"), colors["object"])
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            label = f"{item.get('label', 'OBJECT')} {item.get('conf', 0.0):.2f}"
+            font_scale = max(0.4, min(0.65, w / 1050))
+            thickness = 1 if w < 540 else 2
+            (label_w, label_h), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+            label_x2 = min(w - 1, x1 + label_w + 8)
+            label_y1 = max(0, y1 - label_h - baseline - 8)
+            label_y2 = max(label_h + baseline + 8, y1)
+            cv2.rectangle(frame, (x1, label_y1), (label_x2, label_y2), color, -1)
+            cv2.putText(frame, label, (x1 + 4, label_y2 - baseline - 4), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (5, 10, 20), thickness, cv2.LINE_AA)
 
     @staticmethod
     def _decide_status(counts: Dict[str, Any]) -> str:
