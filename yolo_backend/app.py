@@ -157,7 +157,7 @@ class PPEVideoEngine:
         self.jpeg_quality = safe_number(jpeg_quality, 85, int, 30, 95)
         self.stream_width = int(os.getenv("STREAM_WIDTH", "480"))
         if self.imgsz <= 192:
-            self.stream_width = min(self.stream_width, 280)
+            self.stream_width = min(self.stream_width, 240)
         elif self.imgsz <= 224:
             self.stream_width = min(self.stream_width, 360)
         elif self.imgsz <= 256:
@@ -249,8 +249,8 @@ class PPEVideoEngine:
             self.camera_control_message = "Kamera tidak punya API control."
             return
 
-        # Kamera user stabil sampai framesize 7. Nilai 8-11 bisa timeout pada beberapa ESP32-S3.
-        frame_size = os.getenv("CAMERA_FRAME_SIZE_VALUE", "7")
+        # Frame kecil menjaga ESP32-S3, tunnel, dan browser tetap ringan.
+        frame_size = os.getenv("CAMERA_FRAME_SIZE_VALUE", "5")
         quality = os.getenv("CAMERA_QUALITY_VALUE", "10")
         commands = [
             ("framesize", frame_size),
