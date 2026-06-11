@@ -23,6 +23,7 @@ ADDRESS_NAME="${VM_NAME}-ip"
 FIREWALL_NAME="${VM_NAME}-allow-web"
 
 gcloud config set project "$PROJECT_ID"
+gcloud services enable compute.googleapis.com
 
 if ! gcloud compute addresses describe "$ADDRESS_NAME" --region "$REGION" >/dev/null 2>&1; then
   gcloud compute addresses create "$ADDRESS_NAME" --region "$REGION"
