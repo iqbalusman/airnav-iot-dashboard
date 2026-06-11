@@ -10,9 +10,9 @@ const DEFAULT_CONFIG = {
   modelPath: 'models/best.pt',
   yoloEnabled: true,
   confidence: '0.45',
-  imageSize: '192',
-  inferEvery: '4',
-  jpegQuality: '50',
+  imageSize: '160',
+  inferEvery: '5',
+  jpegQuality: '40',
 };
 
 function normalizeCameraSource(value) {

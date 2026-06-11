@@ -166,6 +166,7 @@ class PPEVideoEngine:
         self.raw_frame: Optional[np.ndarray] = None
         self.annotated_frame: Optional[np.ndarray] = None
         self.latest_jpeg: Optional[bytes] = None
+        self.latest_jpeg_id = 0
         self.frame_id = 0
         self.stop_event = threading.Event()
         self.capture_thread: Optional[threading.Thread] = None
@@ -389,7 +390,7 @@ class PPEVideoEngine:
                     self.active_source_raw = candidate
 
                     while not self.stop_event.is_set():
-                        chunk = response.read(8192)
+                        chunk = response.read(1024)
                         if not chunk:
                             break
                         buffer += chunk
@@ -738,6 +739,7 @@ class PPEVideoEngine:
         if ok:
             with self.lock:
                 self.latest_jpeg = jpg.tobytes()
+                self.latest_jpeg_id += 1
 
     def _encode_latest(self):
         with self.lock:
@@ -752,6 +754,7 @@ class PPEVideoEngine:
         if ok:
             with self.lock:
                 self.latest_jpeg = jpg.tobytes()
+                self.latest_jpeg_id += 1
 
     def _write_log_if_needed(self, status: Dict[str, Any], frame: np.ndarray):
         now = time.time()
@@ -787,6 +790,12 @@ class PPEVideoEngine:
                 self._update_placeholder()
             return self.latest_jpeg or b""
 
+    def get_jpeg_with_id(self) -> Tuple[int, bytes]:
+        with self.lock:
+            if self.latest_jpeg is None:
+                self._update_placeholder()
+            return self.latest_jpeg_id, self.latest_jpeg or b""
+
     def get_status(self) -> Dict[str, Any]:
         with self.lock:
             return dict(self.last_status)
@@ -814,16 +823,24 @@ def health():
 @app.route("/video_feed")
 def video_feed():
     def generate():
+        last_frame_id = -1
         while True:
             with engine_lock:
                 local_engine = engine
             if local_engine is None:
                 time.sleep(0.1)
                 continue
-            frame = local_engine.get_jpeg()
+            frame_id, frame = local_engine.get_jpeg_with_id()
+            if frame_id == last_frame_id:
+                time.sleep(0.005)
+                continue
+            last_frame_id = frame_id
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-            time.sleep(0.015)
-    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    response = Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
 
 
 @app.route("/api/status")
