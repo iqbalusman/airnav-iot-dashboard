@@ -17,7 +17,6 @@ const DEFAULT_CONFIG = {
 
 function normalizeCameraSource(value) {
   const text = String(value || '').trim();
-  if (/^(https?:\/\/)?192\.168\.1\.(51|33|42)(:\d+)?(\/.*)?$/i.test(text)) return DEFAULT_YOLO_CAMERA_SOURCE;
   return text || DEFAULT_CONFIG.cameraSource;
 }
 

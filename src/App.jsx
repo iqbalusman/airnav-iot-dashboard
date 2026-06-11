@@ -377,7 +377,6 @@ function normalizeBackendUrl(value) {
 function normalizeCameraSource(value) {
   const text = String(value || '0').trim().replace(/^0+(?=(https?|rtsp):\/\/)/i, '');
   if (!text) return '0';
-  if (/^(https?:\/\/)?192\.168\.1\.(51|33|42)(:\d+)?(\/.*)?$/i.test(text)) return DEFAULT_YOLO_CAMERA_SOURCE;
   if (/^\d+$/.test(text)) return text;
   if (/^(https?|rtsp):\/\//i.test(text)) return text;
 
@@ -2408,12 +2407,11 @@ function doPost(e) {
               <button type="button" onClick={runLightYoloMode} disabled={yoloLoading} className="rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Upload IP + YOLO Ringan</button>
             </div>
           </div>
-          <div className="lg:col-span-2 grid gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm text-cyan-50 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div className="lg:col-span-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm text-cyan-50">
             <div>
               <p className="text-xs font-black uppercase tracking-wider text-cyan-100/70">IP Stream Kamera Aktif</p>
               <p className="mt-1 break-all text-base font-black text-white">{activeCameraSource}</p>
             </div>
-            <button type="button" onClick={saveYoloCamera} disabled={yoloCameraLoading} className="rounded-2xl border border-cyan-200/30 bg-white/10 px-4 py-3 text-sm font-black text-cyan-50 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60">{yoloCameraLoading ? 'Upload IP...' : 'Upload IP Kamera'}</button>
           </div>
           <label className="block lg:col-span-2">
             <span className="mb-2 block text-sm font-semibold text-slate-200">Path Model YOLO</span>
