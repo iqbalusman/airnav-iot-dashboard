@@ -155,6 +155,11 @@ class PPEVideoEngine:
         self.imgsz = safe_number(imgsz, 320, int, 160, 640)
         self.infer_every = safe_number(infer_every, 2, int, 1, 10)
         self.jpeg_quality = safe_number(jpeg_quality, 85, int, 40, 95)
+        self.stream_width = int(os.getenv("STREAM_WIDTH", "480"))
+        if self.imgsz <= 224:
+            self.stream_width = min(self.stream_width, 360)
+        elif self.imgsz <= 256:
+            self.stream_width = min(self.stream_width, 426)
         self.yolo_enabled = bool(yolo_enabled)
 
         self.lock = threading.RLock()
@@ -739,6 +744,10 @@ class PPEVideoEngine:
             frame = None if self.annotated_frame is None else self.annotated_frame.copy()
         if frame is None:
             return
+        h, w = frame.shape[:2]
+        if w > self.stream_width:
+            next_h = max(1, int(h * (self.stream_width / w)))
+            frame = cv2.resize(frame, (self.stream_width, next_h), interpolation=cv2.INTER_AREA)
         ok, jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality])
         if ok:
             with self.lock:
@@ -813,7 +822,7 @@ def video_feed():
                 continue
             frame = local_engine.get_jpeg()
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-            time.sleep(0.03)
+            time.sleep(0.015)
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
