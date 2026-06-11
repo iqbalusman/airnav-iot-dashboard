@@ -271,6 +271,14 @@ class PPEVideoEngine:
     def _capture_loop(self):
         while not self.stop_event.is_set():
             self._configure_camera_if_supported()
+
+            if any(
+                not candidate.isdigit() and any(key in candidate.lower() for key in ["/stream", "/mjpeg", "action=stream"])
+                for candidate in self.source_candidates
+            ):
+                if self._mjpeg_capture_cycle():
+                    continue
+
             cap = None
             opened_source_raw = ""
             opened_source = None
@@ -281,6 +289,7 @@ class PPEVideoEngine:
                 parsed_candidate = parse_source(candidate)
                 trial_cap = cv2.VideoCapture(parsed_candidate)
                 if trial_cap.isOpened():
+                    trial_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     cap = trial_cap
                     opened_source_raw = candidate
                     opened_source = parsed_candidate
@@ -380,8 +389,11 @@ class PPEVideoEngine:
                             break
                         buffer += chunk
 
-                        start = buffer.find(b"\xff\xd8")
-                        end = buffer.find(b"\xff\xd9", start + 2)
+                        # MJPEG over tunnels can queue old frames. Decode only the
+                        # newest complete JPEG in the buffer so the dashboard follows
+                        # live camera movement instead of draining stale frames.
+                        end = buffer.rfind(b"\xff\xd9")
+                        start = buffer.rfind(b"\xff\xd8", 0, end)
                         if start < 0 or end < 0:
                             if len(buffer) > 1024 * 1024:
                                 buffer = buffer[-4096:]
