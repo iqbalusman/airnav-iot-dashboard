@@ -2,23 +2,39 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'airnav-yolo-detection-config-v2';
 const DEFAULT_YOLO_BACKEND_URL = 'https://yolo.34.101.183.214.sslip.io';
+const DEFAULT_YOLO_CAMERA_SOURCE = 'https://implications-builder-favourites-strand.trycloudflare.com/stream';
 
 const DEFAULT_CONFIG = {
   backendUrl: DEFAULT_YOLO_BACKEND_URL,
-  cameraSource: '0',
+  cameraSource: DEFAULT_YOLO_CAMERA_SOURCE,
   modelPath: 'models/best.pt',
   yoloEnabled: true,
   confidence: '0.45',
-  imageSize: '320',
-  inferEvery: '1',
-  jpegQuality: '85',
+  imageSize: '192',
+  inferEvery: '4',
+  jpegQuality: '50',
 };
+
+function normalizeCameraSource(value) {
+  const text = String(value || '').trim();
+  if (/^(https?:\/\/)?192\.168\.1\.(51|33)(:\d+)?(\/.*)?$/i.test(text)) return DEFAULT_YOLO_CAMERA_SOURCE;
+  return text || DEFAULT_CONFIG.cameraSource;
+}
+
+function normalizeConfig(config = {}) {
+  return {
+    ...DEFAULT_CONFIG,
+    ...config,
+    backendUrl: normalizeBackendUrl(config.backendUrl),
+    cameraSource: normalizeCameraSource(config.cameraSource),
+  };
+}
 
 function loadConfig() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_CONFIG;
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    return normalizeConfig(JSON.parse(raw));
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -85,7 +101,7 @@ function DetectionRow({ label, value }) {
 }
 
 export default function YoloDetectionPage({ initialConfig, canExportLogs = false } = {}) {
-  const startingConfig = useMemo(() => ({ ...loadConfig(), ...(initialConfig || {}) }), [initialConfig]);
+  const startingConfig = useMemo(() => normalizeConfig({ ...loadConfig(), ...(initialConfig || {}) }), [initialConfig]);
   const [config, setConfig] = useState(startingConfig);
   const [status, setStatus] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -99,7 +115,7 @@ export default function YoloDetectionPage({ initialConfig, canExportLogs = false
   const logCsvUrl = `${baseUrl}/logs/detections.csv`;
 
   useEffect(() => {
-    const nextConfig = { ...loadConfig(), ...(initialConfig || {}) };
+    const nextConfig = normalizeConfig({ ...loadConfig(), ...(initialConfig || {}) });
     setConfig(nextConfig);
   }, [initialConfig]);
 

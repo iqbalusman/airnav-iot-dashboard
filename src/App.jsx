@@ -20,6 +20,7 @@ const DATA_FETCH_LIMIT = 200;
 const TABLE_DISPLAY_LIMIT = 300;
 const DEFAULT_USER_MANAGEMENT_API = 'https://script.google.com/macros/s/AKfycbx2t74IMPV1VWD76PA-UlWJkydOYftZ5-2QEa1jkV1wysH3A8UuTa2co7YfkqtU4gPaNw/exec';
 const DEFAULT_YOLO_BACKEND_URL = 'https://yolo.34.101.183.214.sslip.io';
+const DEFAULT_YOLO_CAMERA_SOURCE = 'https://implications-builder-favourites-strand.trycloudflare.com/stream';
 const DEVICE_WIFI_OPTIONS = ['ESP32-1', 'ESP32-2', 'ESP32-3'];
 const RFID_TOOL_ITEMS = [
   { uid: 'BD27B889', namaAlat: 'OBENG SET' },
@@ -42,13 +43,13 @@ const DEFAULT_API_CONFIG = {
 
 const DEFAULT_YOLO_CONFIG = {
   backendUrl: DEFAULT_YOLO_BACKEND_URL,
-  cameraSource: '0',
+  cameraSource: DEFAULT_YOLO_CAMERA_SOURCE,
   modelPath: 'models/best.pt',
   yoloEnabled: true,
   confidence: '0.45',
-  imageSize: '320',
-  inferEvery: '1',
-  jpegQuality: '85',
+  imageSize: '192',
+  inferEvery: '4',
+  jpegQuality: '50',
 };
 
 const DEFAULT_ADMIN = {
@@ -373,6 +374,7 @@ function normalizeBackendUrl(value) {
 function normalizeCameraSource(value) {
   const text = String(value || '0').trim().replace(/^0+(?=(https?|rtsp):\/\/)/i, '');
   if (!text) return '0';
+  if (/^(https?:\/\/)?192\.168\.1\.(51|33)(:\d+)?(\/.*)?$/i.test(text)) return DEFAULT_YOLO_CAMERA_SOURCE;
   if (/^\d+$/.test(text)) return text;
   if (/^(https?|rtsp):\/\//i.test(text)) return text;
 
