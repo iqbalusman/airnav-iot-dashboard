@@ -2232,6 +2232,17 @@ function ApiSettingsPage({ apiConfig, mode, setMode, connectionStatus, onSave, o
     setYoloForm(nextForm);
     onSaveYoloConfig(nextForm);
   };
+  const runLightYoloMode = () => {
+    const nextForm = normalizeYoloConfig({
+      ...yoloForm,
+      yoloEnabled: true,
+      imageSize: '160',
+      inferEvery: '4',
+      jpegQuality: '32',
+    });
+    setYoloForm(nextForm);
+    onSaveYoloConfig(nextForm);
+  };
   const saveYoloCamera = () => onSaveYoloCamera(normalizeYoloConfig(yoloForm));
   const activeCameraSource = normalizeYoloConfig(yoloForm).cameraSource || yoloConfig?.cameraSource || '0';
   const yoloEnabled = yoloForm?.yoloEnabled !== false;
@@ -2379,6 +2390,15 @@ function doPost(e) {
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/35 p-1">
               <button type="button" disabled={yoloLoading} onClick={() => switchYoloMode(false)} className={classNames('rounded-xl px-4 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60', !yoloEnabled ? 'bg-white text-slate-950 shadow' : 'text-slate-300 hover:bg-white/10')}>CCTV</button>
               <button type="button" disabled={yoloLoading} onClick={() => switchYoloMode(true)} className={classNames('rounded-xl px-4 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60', yoloEnabled ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-300 hover:bg-white/10')}>YOLO</button>
+            </div>
+          </div>
+          <div className="lg:col-span-2 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-emerald-100/80">Preset stabil</p>
+                <p className="mt-1 text-sm font-semibold leading-6 text-emerald-50">YOLO Ringan memakai frame kecil agar stream tidak mudah freeze.</p>
+              </div>
+              <button type="button" onClick={runLightYoloMode} disabled={yoloLoading} className="rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Mode YOLO Ringan</button>
             </div>
           </div>
           <div className="lg:col-span-2 grid gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4 text-sm text-cyan-50 lg:grid-cols-[1fr_auto] lg:items-center">
