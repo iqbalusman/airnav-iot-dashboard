@@ -20,7 +20,7 @@ const DATA_FETCH_LIMIT = 200;
 const TABLE_DISPLAY_LIMIT = 300;
 const DEFAULT_USER_MANAGEMENT_API = 'https://script.google.com/macros/s/AKfycbx2t74IMPV1VWD76PA-UlWJkydOYftZ5-2QEa1jkV1wysH3A8UuTa2co7YfkqtU4gPaNw/exec';
 const DEFAULT_YOLO_BACKEND_URL = 'https://yolo.34.101.183.214.sslip.io';
-const DEFAULT_YOLO_CAMERA_SOURCE = 'https://implications-builder-favourites-strand.trycloudflare.com/stream';
+const DEFAULT_YOLO_CAMERA_SOURCE = 'https://deeper-favourite-shall-applications.trycloudflare.com/video';
 const DEVICE_WIFI_OPTIONS = ['ESP32-1', 'ESP32-2', 'ESP32-3'];
 const RFID_TOOL_ITEMS = [
   { uid: 'BD27B889', namaAlat: 'OBENG SET' },

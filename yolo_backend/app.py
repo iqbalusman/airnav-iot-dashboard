@@ -283,7 +283,7 @@ class PPEVideoEngine:
             self._configure_camera_if_supported()
 
             if any(
-                not candidate.isdigit() and any(key in candidate.lower() for key in ["/stream", "/mjpeg", "action=stream"])
+                not candidate.isdigit() and any(key in candidate.lower() for key in ["/stream", "/mjpeg", "/video", "action=stream"])
                 for candidate in self.source_candidates
             ):
                 if self._mjpeg_capture_cycle():
@@ -376,7 +376,7 @@ class PPEVideoEngine:
     def _mjpeg_capture_cycle(self) -> bool:
         stream_candidates = [
             candidate for candidate in self.source_candidates
-            if not candidate.isdigit() and any(key in candidate.lower() for key in ["/stream", "/mjpeg", "action=stream"])
+            if not candidate.isdigit() and any(key in candidate.lower() for key in ["/stream", "/mjpeg", "/video", "action=stream"])
         ]
         if not stream_candidates:
             return False

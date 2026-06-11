@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'airnav-yolo-detection-config-v2';
 const DEFAULT_YOLO_BACKEND_URL = 'https://yolo.34.101.183.214.sslip.io';
-const DEFAULT_YOLO_CAMERA_SOURCE = 'https://implications-builder-favourites-strand.trycloudflare.com/stream';
+const DEFAULT_YOLO_CAMERA_SOURCE = 'https://deeper-favourite-shall-applications.trycloudflare.com/video';
 
 const DEFAULT_CONFIG = {
   backendUrl: DEFAULT_YOLO_BACKEND_URL,
